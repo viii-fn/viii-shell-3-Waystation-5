@@ -1,122 +1,146 @@
 import QtQuick
 import "../core"
 
-// "Game Library", PS5 style: every app in one grid. The selected cover pops up and the screen re-tints to it.
+// Library: every app, A-Z, in a grid. The focused tile grows and gets the same white ring as the home row.
 Item {
     id: root
 
     property var entries: []
-    property bool active: false
-    property bool rowFocus: true
-    property real reveal: 1
+    property int current: 0
 
-    signal launchRequested(var entry, Item tile)
+    signal launched(var entry, real x, real y, real w, real h)
 
-    readonly property real u: height / 768
-    readonly property real lead: 72 * u
-    readonly property real cell: 128 * u
-    readonly property real gap: 22 * u
-    readonly property int cols: Math.max(1, Math.floor((width - 2 * lead + gap) / (cell + gap)))
-    readonly property var currentEntry: entries.length > 0 ? entries[Math.min(grid.currentIndex, entries.length - 1)] : null
-    readonly property string iconSource: currentEntry ? "file://" + Apps.iconPath(currentEntry) : ""
+    readonly property int cols: Math.max(4, Math.round((width - 96) / 180))
+    readonly property real cellW: (width - 96) / cols
+    readonly property real cellH: 178
+    readonly property real tileSize: 124
+    readonly property var cur: (entries && entries.length > 0) ? entries[Math.min(current, entries.length - 1)] : null
 
-    function reset() {
-        grid.currentIndex = 0;
-        grid.contentY = 0;
+    property real wantY: 0
+
+    function ensureVisible() {
+        const row = Math.floor(current / cols);
+        const top = row * cellH;
+        const bot = top + cellH;
+        let y = wantY;
+        if (top < y) y = top;
+        else if (bot > y + grid.height) y = bot - grid.height;
+        y = Math.max(0, y);
+        if (y !== wantY) {
+            wantY = y;
+            scroll.to = y;
+            scroll.restart();
+        }
     }
+    onCurrentChanged: ensureVisible()
 
-    function atTop() { return grid.currentIndex < cols; }
+    function reset() { scroll.stop(); wantY = 0; grid.contentY = 0; current = 0; }
 
+    // returns false when the move was blocked (top edge, so the caller can jump to the tabs)
     function move(dx, dy) {
-        if (entries.length === 0) return;
-        let i = grid.currentIndex + dx + dy * cols;
-        i = Math.max(0, Math.min(entries.length - 1, i));
-        grid.currentIndex = i;
-        reveal_(i);
-    }
-
-    // keep the selected row inside the view (smoothly, via the Behavior on contentY)
-    function reveal_(i) {
-        const rowTop = Math.floor(i / cols) * grid.cellHeight;
-        const rowBottom = rowTop + grid.cellHeight;
-        if (rowTop < grid.contentY) grid.contentY = rowTop;
-        else if (rowBottom > grid.contentY + grid.height) grid.contentY = rowBottom - grid.height;
+        const n = entries.length;
+        if (n === 0) return false;
+        const col = current % cols;
+        const row = Math.floor(current / cols);
+        const lastRow = Math.floor((n - 1) / cols);
+        if (dx !== 0) {
+            const nc = col + dx;
+            const ni = current + dx;
+            if (nc < 0 || nc >= cols || ni < 0 || ni >= n) return false;
+            current = ni;
+            return true;
+        }
+        if (dy < 0) {
+            if (row === 0) return false;
+            current = current - cols;
+            return true;
+        }
+        if (dy > 0) {
+            if (row >= lastRow) return false;
+            current = Math.min(n - 1, current + cols);
+            return true;
+        }
+        return false;
     }
 
     function activate() {
-        if (currentEntry) launchRequested(currentEntry, grid.itemAtIndex(grid.currentIndex));
-    }
-
-    function retint() {
-        if (currentEntry) Theme.applyPalette(Apps.paletteFor(currentEntry));
-    }
-
-    onCurrentEntryChanged: if (active) retint()
-    Connections {
-        target: Apps
-        function onPalettesChanged() { if (root.active) root.retint(); }
-    }
-
-    Column {
-        x: root.lead
-        y: 104 * root.u
-        spacing: 2 * root.u
-        opacity: root.reveal
-        Text {
-            text: "Library"
-            font.family: Theme.fontFamily
-            font.pixelSize: 34 * root.u
-            font.weight: Font.DemiBold
-            color: Theme.fg
+        if (!cur) return;
+        const it = grid.currentItem;
+        let px = width / 2 - tileSize / 2, py = height / 2 - tileSize / 2;
+        if (it) {
+            const p = it.mapToItem(root, 0, 0);
+            px = p.x + (it.width - tileSize) / 2;
+            py = p.y + 16;
         }
-        Text {
-            text: root.currentEntry ? root.currentEntry.name + "  \u00b7  " + root.entries.length + " apps" : ""
-            font.family: Theme.fontFamily
-            font.pixelSize: 15 * root.u
-            color: Theme.fgDim
-        }
+        launched(cur, px, py, tileSize, tileSize);
+    }
+
+    NumberAnimation {
+        id: scroll
+        target: grid; property: "contentY"
+        duration: Motion.scroll
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out
     }
 
     GridView {
         id: grid
-        anchors.fill: parent
-        anchors.topMargin: 190 * root.u
-        anchors.leftMargin: root.lead
-        anchors.rightMargin: root.lead
-        anchors.bottomMargin: 70 * root.u
-        cellWidth: root.cell + root.gap
-        cellHeight: root.cell + root.gap
+        x: 48
+        y: 118
+        width: root.width - 96
+        height: root.height - 118 - 64
+        clip: true
         interactive: false
-        clip: false
-        cacheBuffer: 0
+        keyNavigationEnabled: false
+        highlightFollowsCurrentItem: false
+        cacheBuffer: 360
+        cellWidth: root.cellW
+        cellHeight: root.cellH
         model: root.entries
-        currentIndex: 0
-
-        Behavior on contentY {
-            NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-        }
+        currentIndex: root.current
 
         delegate: Item {
-            id: cellItem
+            id: cell
             required property var modelData
             required property int index
-            readonly property bool isCurrent: index === grid.currentIndex
+            readonly property bool isCur: index === root.current
             width: grid.cellWidth
             height: grid.cellHeight
-            z: isCurrent ? 5 : 0
 
-            Tile {
-                anchors.centerIn: parent
-                entry: cellItem.modelData
-                u: root.u
-                size: root.cell
-                focused: cellItem.isCurrent && root.rowFocus && root.active
-                scale: cellItem.isCurrent && root.rowFocus ? 1.16 : 1.0
-                appear: Math.max(0, Math.min(1, root.reveal * 1.9 - ((index % root.cols) + Math.floor(index / root.cols)) * 0.07))
-                onActivated: {
-                    if (cellItem.isCurrent) root.activate();
-                    else { grid.currentIndex = cellItem.index; root.reveal_(cellItem.index); }
-                }
+            AppTile {
+                id: tile
+                x: (cell.width - root.tileSize) / 2
+                y: 16
+                width: root.tileSize
+                height: root.tileSize
+                entry: cell.modelData
+                dim: cell.isCur ? 0 : 0.7
+                scale: cell.isCur ? 1.1 : 1.0
+                Behavior on scale { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+            }
+            Rectangle {
+                x: tile.x - 7; y: tile.y - 7
+                width: tile.width + 14; height: tile.height + 14
+                radius: tile.corner + 7
+                color: "transparent"
+                border.width: 3
+                border.color: Theme.fg
+                opacity: cell.isCur ? 1 : 0
+                scale: tile.scale
+                Behavior on opacity { NumberAnimation { duration: 160 } }
+                Behavior on scale { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+            }
+            Txt {
+                x: 8; y: 154
+                width: cell.width - 16
+                horizontalAlignment: Text.AlignHCenter
+                text: cell.modelData.name
+                font.pixelSize: 14
+                font.weight: cell.isCur ? Font.DemiBold : Font.Normal
+                color: cell.isCur ? Theme.fg : Theme.fgDim
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: { if (cell.isCur) root.activate(); else root.current = cell.index; }
             }
         }
     }

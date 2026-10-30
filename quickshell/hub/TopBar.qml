@@ -1,138 +1,118 @@
 import QtQuick
 import Quickshell
-import Quickshell.Widgets
 import Quickshell.Services.UPower
 import "../core"
 
+// Tabs on the left; battery, clock and avatar on the right. Works in the 1366x768 design space.
 Item {
     id: root
+    property int page: 0
+    property bool tabsFocus: false
+    signal tabClicked(int index)
 
-    property string page: "home"
-    property bool tabFocus: false
-    property real reveal: 1
-    property real u: 1
+    height: 110
 
-    readonly property var bat: UPower.displayDevice
-    readonly property real pct: bat && bat.isPresent ? (bat.percentage <= 1 ? bat.percentage * 100 : bat.percentage) : -1
-    readonly property bool charging: bat && bat.isPresent && bat.state === UPowerDeviceState.Charging
-
-    height: 96 * u
-    opacity: reveal
-    transform: Translate { y: -(1 - root.reveal) * 26 * root.u }
-
-    SystemClock { id: clock; precision: SystemClock.Minutes }
+    SystemClock { id: clk; precision: SystemClock.Minutes }
 
     Row {
-        id: tabs
-        x: 72 * root.u
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 38 * root.u
-
+        x: 54
+        y: 38
+        spacing: 10
         Repeater {
-            model: [ { k: "home", t: "Apps" }, { k: "library", t: "Library" } ]
+            model: ["Apps", "Library"]
             delegate: Item {
                 id: tab
-                required property var modelData
-                readonly property bool isActive: root.page === modelData.k
-                width: label.width + 28 * root.u
-                height: 48 * root.u
+                required property string modelData
+                required property int index
+                readonly property bool cur: root.page === index
+                width: lbl.width + 36
+                height: 42
 
-                // focus pill (only while the tab bar itself has focus)
                 Rectangle {
                     anchors.fill: parent
-                    radius: height / 2
+                    radius: 21
                     color: Qt.rgba(1, 1, 1, 0.16)
-                    opacity: tab.isActive && root.tabFocus ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Motion.focus } }
+                    opacity: (tab.cur && root.tabsFocus) ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
-
-                Text {
-                    id: label
+                Txt {
+                    id: lbl
                     anchors.centerIn: parent
-                    text: tab.modelData.t
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 22 * root.u
-                    font.weight: tab.isActive ? Font.DemiBold : Font.Normal
-                    color: tab.isActive ? Theme.fg : Theme.fgDim
-                    Behavior on color { ColorAnimation { duration: Motion.focus } }
+                    text: tab.modelData
+                    font.pixelSize: 21
+                    font.weight: tab.cur ? Font.Bold : Font.Medium
+                    color: tab.cur ? Theme.fg : Theme.fgDim
                 }
-
-                // underline
                 Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.bottom: parent.bottom
-                    width: label.width
-                    height: 3 * root.u
-                    radius: height / 2
+                    x: (parent.width - width) / 2
+                    y: parent.height - 2
+                    height: 3
+                    radius: 1.5
+                    width: tab.cur ? lbl.width : 0
                     color: Theme.fg
-                    opacity: tab.isActive ? 1 : 0
-                    transform: Scale {
-                        origin.x: width / 2
-                        xScale: tab.isActive ? 1 : 0.25
-                        Behavior on xScale {
-                            NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-                        }
-                    }
-                    Behavior on opacity { NumberAnimation { duration: Motion.focus } }
+                    Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
                 }
+                MouseArea { anchors.fill: parent; onClicked: root.tabClicked(tab.index) }
             }
         }
     }
 
     Row {
         anchors.right: parent.right
-        anchors.rightMargin: 72 * root.u
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 28 * root.u
+        anchors.rightMargin: 72
+        y: 38
+        spacing: 24
+        layoutDirection: Qt.LeftToRight
 
         // battery
-        Row {
-            visible: root.pct >= 0
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.u
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                font.family: Theme.iconFont
-                font.pixelSize: 20 * root.u
-                color: Theme.fg
-                text: root.charging ? "\uf0e7"
-                    : root.pct > 85 ? "\uf240"
-                    : root.pct > 60 ? "\uf241"
-                    : root.pct > 35 ? "\uf242"
-                    : root.pct > 10 ? "\uf243" : "\uf244"
+        Item {
+            readonly property real pct: UPower.displayDevice ? UPower.displayDevice.percentage : -1
+            visible: pct >= 0
+            width: visible ? 74 : 0
+            height: 42
+            Rectangle {
+                id: body
+                x: 0; y: 14
+                width: 28; height: 14
+                radius: 4
+                color: "transparent"
+                border.width: 1.5
+                border.color: Qt.rgba(1, 1, 1, 0.85)
+                Rectangle {
+                    x: 3; y: 3
+                    height: parent.height - 6
+                    width: Math.max(2, (parent.width - 6) * Math.min(1, Math.max(0, parent.parent.pct)))
+                    radius: 2
+                    color: parent.parent.pct < 0.15 ? "#ff6b6b" : Theme.fg
+                }
             }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                font.family: Theme.fontFamily
-                font.pixelSize: 18 * root.u
-                color: Theme.fg
-                text: Math.round(root.pct) + "%"
-            }
+            Rectangle { x: 29.5; y: 17.5; width: 3; height: 7; radius: 1.5; color: Qt.rgba(1, 1, 1, 0.85) }
+            Txt { x: 40; y: (42 - height) / 2; text: Math.round(Math.max(0, parent.pct) * 100) + "%"; font.pixelSize: 16 }
         }
 
         // clock
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            font.family: Theme.fontFamily
-            font.pixelSize: 24 * root.u
+        Txt {
+            y: (42 - height) / 2
+            text: Qt.formatDateTime(clk.date, "HH:mm")
+            font.pixelSize: 24
             font.weight: Font.Medium
-            color: Theme.fg
-            text: Qt.formatDateTime(clock.date, "hh:mm")
         }
 
-        // avatar (~/pfp.jpg; the accent colour shows if the file is missing)
-        ClippingRectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 46 * root.u
-            height: width
-            radius: width / 2
-            color: Theme.accent
-            Image {
-                anchors.fill: parent
-                source: "file://" + Quickshell.env("HOME") + "/pfp.jpg"
-                sourceSize: Qt.size(128, 128)
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
+        // avatar
+        Rectangle {
+            width: 42; height: 42; radius: 21
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Theme.accent }
+                GradientStop { position: 1.0; color: Qt.darker(Theme.accent, 1.8) }
+            }
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.25)
+            Txt {
+                anchors.centerIn: parent
+                text: (Quickshell.env("USER") || "u").charAt(0).toUpperCase()
+                font.pixelSize: 18
+                font.weight: Font.Bold
+                color: Theme.accentText
             }
         }
     }

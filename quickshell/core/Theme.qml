@@ -21,7 +21,12 @@ Singleton {
 
     readonly property color fg: "#f5f7fb"
     readonly property color fgDim: Qt.rgba(1, 1, 1, 0.62)
-    readonly property string fontFamily: "Inter"
+    readonly property string fontFamily: {
+        const have = Qt.fontFamilies();
+        const want = ["Inter", "SF Pro Display", "Noto Sans", "Cantarell", "DejaVu Sans"];
+        for (let i = 0; i < want.length; i++) if (have.indexOf(want[i]) >= 0) return want[i];
+        return "sans-serif";
+    }
     readonly property string iconFont: "Symbols Nerd Font"
 
     // p = { primary, onPrimary, primaryContainer, surface } (see Apps.parse)

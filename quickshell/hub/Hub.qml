@@ -4,213 +4,251 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../core"
 
-// One of these per monitor. It is the "PS5 home screen":
-//  - shows by itself when the monitor's active workspace has no windows (base level)
-//  - fades away when a window arrives (the app slides in from the right, see hypr/viii.lua)
-//  - can be summoned on top of windows (PS button / launcher key)
+// One hub per monitor. A layer-shell window that is shown when the monitor's workspace is empty
+// (base layer) or when summoned. Design space is 1366x768, scaled uniformly to the actual screen.
 PanelWindow {
     id: win
 
-    readonly property bool focusedHere: Hyprland.focusedMonitor !== null && screen !== null
-                                        && Hyprland.focusedMonitor.name === screen.name
-    readonly property bool wantShown: (screen !== null && Desk.isEmpty(screen.name)) || (Desk.summoned && focusedHere)
-    readonly property bool overWindows: Desk.summoned && !(screen !== null && Desk.isEmpty(screen.name))
-
-    property real reveal: 0
-    property string page: "home"
-    property bool tabFocus: false
-    property bool launching: false
-    property var homeEntries: []
-    property var libEntries: []
-
-    readonly property real u: height / 768
-
-    // ---- window setup ----
-    visible: reveal > 0.001
     anchors { top: true; bottom: true; left: true; right: true }
-    exclusionMode: ExclusionMode.Ignore
     color: "transparent"
-    WlrLayershell.namespace: "viii-hub"
+    exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Top
-    // only grab the keyboard on the monitor you're actually on
-    WlrLayershell.keyboardFocus: (wantShown && focusedHere) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-    // while fading out the hub must not eat clicks
-    mask: wantShown ? fullMask : noMask
-    Region { id: fullMask; item: stage }
-    Region { id: noMask }
+    WlrLayershell.namespace: "viii-hub"
+    WlrLayershell.keyboardFocus: (win.shown && win.isFocusedMon) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-    Behavior on reveal {
+    readonly property bool shown: Desk.isEmpty(screen.name) || Desk.summoned
+    readonly property var fm: Hyprland.focusedMonitor
+    readonly property bool isFocusedMon: fm ? fm.name === screen.name : true
+
+    property real vis: shown ? 1 : 0
+    Behavior on vis {
         NumberAnimation {
-            duration: win.wantShown ? Motion.reveal : Motion.hide
+            duration: win.shown ? Motion.reveal : Motion.hide
             easing.type: Easing.BezierSpline
-            easing.bezierCurve: win.wantShown ? Motion.out : Motion.inOut
+            easing.bezierCurve: win.shown ? Motion.out : Motion.inOut
         }
     }
+    visible: shown || vis > 0.002
 
-    onWantShownChanged: {
-        if (wantShown) {
-            homeEntries = Apps.ranked(12);
-            libEntries = Apps.alphabetical();
-            home.reset();
-            lib.reset();
-            page = "home";
-            tabFocus = false;
-            reveal = 1;
-        } else {
-            reveal = 0;
-        }
+    // ---- state ----
+    property int page: 0                 // 0 = Apps (home row), 1 = Library
+    property bool tabsFocus: false
+    property bool launching: false
+    property real intro: 0
+    property real pageT: page
+    Behavior on pageT {
+        NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
     }
 
-    // once fully hidden, forget the launch
-    onRevealChanged: {
-        if (reveal < 0.005) {
-            launching = false;
-            fx.reset();
-            giveUp.stop();
-        }
+    // ---- design-space scaling ----
+    readonly property real s: Math.max(0.1, Math.min(width / 1366, height / 768))
+    readonly property real dW: width / s
+    readonly property real dH: height / s
+
+    readonly property var sel: page === 1 ? lib.cur : home.cur
+
+    function iconUrl(entry) {
+        if (!entry || entry.isLibrary === true) return "";
+        const p = Apps.iconPath(entry);
+        if (!p) return "";
+        return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
-    onPageChanged: Qt.callLater(() => (page === "home" ? home : lib).retint())
+    function rebuild() {
+        home.entries = Apps.ranked(16).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        home.reset();
+        lib.entries = Apps.alphabetical();
+        lib.reset();
+    }
+
+    function tint() {
+        if (!shown || !isFocusedMon || !sel) return;
+        Apps.request(sel);
+        Theme.applyPalette(Apps.paletteFor(sel));
+    }
+    onSelChanged: tint()
+    onIsFocusedMonChanged: tint()
 
     Connections {
+        target: Apps
+        function onPalettesChanged() { win.tint(); }
+    }
+    Connections {
         target: Desk
-        function onLibraryRequested() { if (win.wantShown) { win.page = "library"; win.tabFocus = false; } }
+        function onLibraryRequested() { win.page = 1; win.tabsFocus = false; }
     }
 
-    // ---- navigation ----
-    function setPage(p) { page = p; }
-
-    function nav(dx, dy) {
-        if (tabFocus) {
-            if (dy > 0) { tabFocus = false; return; }
-            if (dx !== 0) setPage(dx > 0 ? "library" : "home");
-            return;
-        }
-        if (page === "home") {
-            if (dy < 0) { tabFocus = true; return; }
-            if (dx !== 0) home.step(dx);
+    onShownChanged: {
+        if (shown) {
+            resetTimer.stop();
+            rebuild();
+            page = 0;
+            tabsFocus = false;
+            launching = false;
+            fx.reset();
+            intro = 0;
+            introAnim.restart();
+            warm.restart();
+            root.forceActiveFocus();
+            tint();
         } else {
-            if (dy < 0 && lib.atTop()) { tabFocus = true; return; }
-            lib.move(dx, dy);
+            resetTimer.restart();
         }
     }
 
-    function activate() {
-        if (tabFocus) { tabFocus = false; return; }
-        (page === "home" ? home : lib).activate();
+    Component.onCompleted: {
+        if (shown) {
+            rebuild();
+            introAnim.restart();
+            warm.restart();
+            tint();
+        }
+        retry.start();
     }
 
-    function back() {
-        if (tabFocus) tabFocus = false;
-        else if (page === "library") setPage("home");
-        else if (Desk.summoned) Desk.summoned = false;
-    }
+    NumberAnimation { id: introAnim; target: win; property: "intro"; from: 0; to: 1; duration: 1000 }
 
-    function launch(entry, item) {
-        if (!item || launching) return;
-        launching = true;
-        const p = item.mapToItem(stage, 0, 0);
-        fx.start(p.x, p.y, item.width * item.scale, item.height * item.scale, Apps.paletteFor(entry), Apps.iconPath(entry));
-        entry.execute();
-        Desk.summoned = false;
-        giveUp.restart();
-    }
-
-    // app never opened a window: bring the hub back
+    // app list can be empty right at startup; try again a few times
     Timer {
-        id: giveUp
-        interval: 9000
-        onTriggered: { fx.collapse(); win.launching = false; }
+        id: retry
+        interval: 1200; repeat: true
+        property int tries: 0
+        onTriggered: {
+            if (home.entries.length > 1 || ++tries > 6) { stop(); return; }
+            win.rebuild();
+        }
+    }
+    // pre-compute palettes for the home row once it has settled
+    Timer {
+        id: warm
+        interval: 900
+        onTriggered: { for (let i = 0; i < home.entries.length; i++) Apps.request(home.entries[i]); }
+    }
+    Timer {
+        id: resetTimer
+        interval: Motion.hide + 80
+        onTriggered: { fx.reset(); win.launching = false; launchTimer.stop(); abortTimer.stop(); }
+    }
+    Timer { id: launchTimer; interval: 700; onTriggered: Desk.summoned = false }
+    Timer { id: abortTimer; interval: 2800; onTriggered: { if (win.shown) fx.abort(); win.launching = false; } }
+
+    // ---- actions ----
+    function launch(entry, x, y, w, h) {
+        if (launching || !entry) return;
+        if (entry.isLibrary === true) { page = 1; tabsFocus = false; return; }
+        launching = true;
+        fx.start(entry, x, y, w, h);
+        entry.execute();
+        launchTimer.restart();
+        abortTimer.restart();
     }
 
-    // ---- content ----
-    Item {
-        id: stage
-        anchors.fill: parent
-        opacity: win.reveal
-        focus: true
+    function horiz(d) {
+        if (tabsFocus) page = Math.max(0, Math.min(1, page + d));
+        else if (page === 0) home.move(d);
+        else lib.move(d, 0);
+    }
+    function vert(d) {
+        if (tabsFocus) { if (d > 0) tabsFocus = false; }
+        else if (page === 0) { if (d < 0) tabsFocus = true; }
+        else { if (!lib.move(0, d) && d < 0) tabsFocus = true; }
+    }
+    function choose() {
+        if (tabsFocus) tabsFocus = false;
+        else if (page === 0) home.activate();
+        else lib.activate();
+    }
+    function back() {
+        if (tabsFocus) tabsFocus = false;
+        else if (page === 1) page = 0;
+        else Desk.summoned = false;
+    }
 
-        Keys.onPressed: event => {
-            event.accepted = true;
-            if (win.launching) return;
-            switch (event.key) {
-            case Qt.Key_Left:   case Qt.Key_H: win.nav(-1, 0); break;
-            case Qt.Key_Right:  case Qt.Key_L: win.nav(1, 0); break;
-            case Qt.Key_Up:     case Qt.Key_K: win.nav(0, -1); break;
-            case Qt.Key_Down:   case Qt.Key_J: win.nav(0, 1); break;
-            case Qt.Key_Return: case Qt.Key_Enter: win.activate(); break;
-            case Qt.Key_Escape: case Qt.Key_Backspace: win.back(); break;
-            default: event.accepted = false;
-            }
+    function handleKey(e) {
+        if (launching) { e.accepted = true; return; }
+        let handled = true;
+        switch (e.key) {
+        case Qt.Key_Left: case Qt.Key_H: horiz(-1); break;
+        case Qt.Key_Right: case Qt.Key_L: horiz(1); break;
+        case Qt.Key_Up: case Qt.Key_K: vert(-1); break;
+        case Qt.Key_Down: case Qt.Key_J: vert(1); break;
+        case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: choose(); break;
+        case Qt.Key_Tab: page = 1 - page; tabsFocus = false; break;
+        case Qt.Key_Escape: back(); break;
+        default: handled = false;
         }
+        e.accepted = handled;
+    }
+
+    // ---- scene ----
+    FocusScope {
+        id: root
+        anchors.fill: parent
+        focus: true
+        opacity: win.vis
+        Keys.onPressed: event => win.handleKey(event)
 
         Backdrop {
             anchors.fill: parent
-            active: win.reveal > 0.001
-            dim: win.overWindows ? 0.9 : 1.0
-            iconSource: win.page === "home" ? home.iconSource : lib.iconSource
+            icon: win.iconUrl(win.sel)
+            shown: win.shown
         }
 
-        TopBar {
-            id: top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            u: win.u
-            page: win.page
-            tabFocus: win.tabFocus
-            reveal: win.reveal
-            opacity: win.launching ? 0 : win.reveal
-            Behavior on opacity { NumberAnimation { duration: 240 } }
-        }
+        Item {
+            id: stage
+            width: win.dW
+            height: win.dH
+            x: (win.width - width) / 2
+            y: (win.height - height) / 2
+            transformOrigin: Item.Center
+            scale: win.s * (1.035 - 0.035 * win.vis)
 
-        HomePage {
-            id: home
-            anchors.fill: parent
-            entries: win.homeEntries
-            active: win.page === "home" && win.wantShown
-            rowFocus: !win.tabFocus
-            reveal: win.reveal
-            opacity: (win.page === "home" && !win.launching) ? 1 : 0
-            x: win.page === "home" ? 0 : -60 * win.u
-            visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: 260 } }
-            Behavior on x { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-            onLaunchRequested: (entry, tile) => win.launch(entry, tile)
-            onLibraryRequested: win.setPage("library")
-        }
+            TopBar {
+                id: bar
+                width: parent.width
+                page: win.page
+                tabsFocus: win.tabsFocus
+                opacity: Math.min(1, win.intro * 2.5)
+                onTabClicked: index => { win.page = index; win.tabsFocus = false; }
+            }
 
-        LibraryPage {
-            id: lib
-            anchors.fill: parent
-            entries: win.libEntries
-            active: win.page === "library" && win.wantShown
-            rowFocus: !win.tabFocus
-            reveal: win.reveal
-            opacity: (win.page === "library" && !win.launching) ? 1 : 0
-            x: win.page === "library" ? 0 : 60 * win.u
-            visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: 260 } }
-            Behavior on x { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-            onLaunchRequested: (entry, tile) => win.launch(entry, tile)
-        }
+            HomePage {
+                id: home
+                width: parent.width
+                height: parent.height
+                intro: win.intro
+                opacity: 1 - win.pageT
+                y: -26 * win.pageT
+                visible: opacity > 0.01
+                onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
+            }
 
-        // key hints, bottom right
-        Row {
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: 72 * win.u
-            anchors.bottomMargin: 34 * win.u
-            spacing: 26 * win.u
-            opacity: win.launching ? 0 : 0.75 * win.reveal
-            Behavior on opacity { NumberAnimation { duration: 240 } }
-            Text { text: "Enter  Open"; font.family: Theme.fontFamily; font.pixelSize: 14 * win.u; color: Theme.fg }
-            Text { text: "Esc  Back"; font.family: Theme.fontFamily; font.pixelSize: 14 * win.u; color: Theme.fg }
-        }
+            LibraryPage {
+                id: lib
+                width: parent.width
+                height: parent.height
+                opacity: win.pageT
+                y: 26 * (1 - win.pageT)
+                visible: opacity > 0.01
+                onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
+            }
 
-        LaunchFx {
-            id: fx
-            anchors.fill: parent
-            u: win.u
+            Row {
+                anchors.right: parent.right
+                anchors.rightMargin: 72
+                y: parent.height - 56
+                spacing: 28
+                opacity: Math.min(1, win.intro * 2)
+                Hint { key: "\u2190 \u2192"; label: "Browse" }
+                Hint { key: "Enter"; label: win.page === 0 && win.sel && win.sel.isLibrary === true ? "Browse" : "Open" }
+                Hint { key: "Tab"; label: "Switch" }
+                Hint { key: "Esc"; label: "Back" }
+            }
+
+            LaunchFx {
+                id: fx
+                anchors.fill: parent
+            }
         }
     }
 }

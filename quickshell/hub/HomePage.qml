@@ -1,269 +1,201 @@
 import QtQuick
+import QtQuick.Effects
+import QtQuick.Shapes
 import "../core"
 
-// The home row. Selected tile grows and sits on the left, the rest stream off to the right.
-// Under it: name, an Open pill, and screen time (the "trophy" slot of a PS5 home screen).
+// Home row. The focused tile always sits at the left margin with a fixed focus ring; the row slides
+// underneath it. One animated number (f = focus position) drives every tile's size and position.
 Item {
     id: root
 
+    property real intro: 1
     property var entries: []
-    property bool active: true
-    property bool rowFocus: true
-    property real reveal: 1
+    property int current: 0
+    property real f: 0
+    property bool animateF: true
+    property real infoIn: 1
+    signal launched(var entry, real x, real y, real w, real h)
 
-    signal launchRequested(var entry, Item tile)
-    signal libraryRequested()
+    readonly property real small: 132
+    readonly property real sel: 212
+    readonly property real gap: 18
+    readonly property real left: 72
+    readonly property real cy: 214
+    readonly property real d: sel - small
+    readonly property real ringCorner: sel * 0.13
 
-    readonly property real u: height / 768
-    readonly property real smallSize: 148 * u
-    readonly property real bigSize: 236 * u
-    readonly property real gap: 18 * u
-    readonly property real lead: 72 * u
+    readonly property var cur: (entries && entries.length > 0) ? entries[Math.min(current, entries.length - 1)] : null
 
-    readonly property var model: entries.concat([{ isLibrary: true, name: "Library" }])
-    readonly property var currentEntry: model.length > 0 ? model[Math.min(list.currentIndex, model.length - 1)] : null
-    readonly property string iconSource: (currentEntry && !currentEntry.isLibrary) ? "file://" + Apps.iconPath(currentEntry) : ""
-
-    // biggest 7-day total in the row, so every progress bar is relative
-    readonly property real weekMax: {
+    readonly property real topSum: {
         void ScreenTime.revision;
         let m = 0;
-        for (let i = 0; i < entries.length; i++) m = Math.max(m, ScreenTime.sum(entries[i], 7));
+        for (let i = 0; i < entries.length; i++) {
+            const e = entries[i];
+            if (e && e.isLibrary !== true) m = Math.max(m, ScreenTime.sum(e, 7));
+        }
         return m;
     }
 
-    function reset() {
-        list.animateScroll = false;
-        list.currentIndex = 0;
-        list.contentX = list.originX;
-        Qt.callLater(() => { list.animateScroll = true; });
+    // ---- geometry: tile i's size/position as a function of the animated focus f ----
+    function tent(j) { return Math.max(0, 1 - Math.abs(j - f)); }
+    function tsum(i) {                     // sum of tent(j) for j < i
+        const k = Math.floor(f);
+        const fr = f - k;
+        if (i <= k) return 0;
+        if (i === k + 1) return 1 - fr;
+        return 1;
+    }
+    readonly property real scrollOff: {
+        const fr = f - Math.floor(f);
+        return f * (small + gap) + d * fr * (1 - fr);
+    }
+    function wOf(i) { return small + d * tent(i); }
+    function xOf(i) { return left + i * (small + gap) + d * tsum(i) - scrollOff; }
+    function stage(i) {                    // staggered entrance, 0..1
+        const p = Math.max(0, Math.min(1, (intro - Math.min(i, 9) * 0.05) / 0.55));
+        return 1 - Math.pow(1 - p, 3);
     }
 
-    function goTo(i) {
-        const n = Math.max(0, Math.min(model.length - 1, i));
-        list.currentIndex = n;
-        list.contentX = list.originX + n * (smallSize + gap);
+    Behavior on f {
+        enabled: root.animateF
+        NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
     }
 
-    function step(dir) { goTo(list.currentIndex + dir); }
+    onCurrentChanged: { f = current; infoAnim.restart(); }
 
-    function activate() {
-        const e = currentEntry;
-        if (!e) return;
-        if (e.isLibrary) libraryRequested();
-        else launchRequested(e, list.itemAtIndex(list.currentIndex));
+    function move(dir) {
+        const n = Math.max(0, Math.min(entries.length - 1, current + dir));
+        if (n === current) return false;
+        current = n;
+        return true;
+    }
+    function reset() { animateF = false; current = 0; f = 0; animateF = true; }
+    function activate() { if (cur) launched(cur, left, cy - sel / 2, sel, sel); }
+    function subtitle(e) {
+        if (!e) return "";
+        if (e.isLibrary === true) return "Browse every installed app";
+        return e.comment || e.genericName || "Application";
     }
 
-    function retint() {
-        if (currentEntry) Theme.applyPalette(Apps.paletteFor(currentEntry));
+    NumberAnimation {
+        id: infoAnim
+        target: root; property: "infoIn"
+        from: 0; to: 1; duration: 380
+        easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out
     }
 
-    onCurrentEntryChanged: if (active) retint()
-    Connections {
-        target: Apps
-        function onPalettesChanged() { if (root.active) root.retint(); }
+    // glow under the focused tile (declared before the tiles so it sits behind them)
+    RectangularShadow {
+        x: root.left; y: root.cy - root.sel / 2
+        width: root.sel; height: root.sel
+        radius: root.ringCorner
+        blur: 46
+        spread: 4
+        offset: Qt.vector2d(0, 18)
+        color: Qt.alpha(Theme.accent, 0.55)
+        opacity: root.intro
     }
 
-    ListView {
-        id: list
-        property bool animateScroll: false
-
-        anchors.left: parent.left
-        anchors.right: parent.right
-        y: root.height * 0.24
-        height: root.bigSize + 36 * root.u
-        orientation: ListView.Horizontal
-        interactive: false
-        spacing: root.gap
-        leftMargin: root.lead
-        rightMargin: width - root.lead - root.bigSize
-        model: root.model
-        currentIndex: 0
-        cacheBuffer: 1600
-
-        Behavior on contentX {
-            enabled: list.animateScroll
-            NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-        }
-
-        delegate: Tile {
-            id: tile
+    Repeater {
+        model: root.entries
+        delegate: Item {
+            id: cell
             required property var modelData
             required property int index
+            readonly property real w: root.wOf(index)
+            readonly property real t: root.stage(index)
 
-            entry: modelData
-            u: root.u
-            readonly property bool isCurrent: index === list.currentIndex
-            focused: isCurrent && root.rowFocus && root.active
-            size: isCurrent ? root.bigSize : root.smallSize
-            // staggered entrance: each tile starts a little later than the one before it
-            appear: Math.max(0, Math.min(1, root.reveal * 1.7 - index * 0.09))
-            y: ListView.view.height - height - 20 * root.u
+            x: root.xOf(index) + (1 - t) * 44
+            y: root.cy - w / 2 + (1 - t) * 26
+            width: w
+            height: w
+            opacity: t * Math.min(1, Math.max(0, 1 - (root.f - index)))
+            visible: x < root.width + 10 && x + width > -10 && opacity > 0.01
 
-            onActivated: {
-                if (isCurrent) root.activate();
-                else root.goTo(index);
+            AppTile {
+                anchors.fill: parent
+                entry: cell.modelData
+                dim: 1 - root.tent(cell.index)
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: { if (cell.index === root.current) root.activate(); else root.current = cell.index; }
             }
         }
     }
 
-    // ---- info under the selected tile ----
+    // focus ring: white outline with a gap, fixed at the left margin
+    Rectangle {
+        x: root.left - 7; y: root.cy - root.sel / 2 - 7
+        width: root.sel + 14; height: root.sel + 14
+        radius: root.ringCorner + 7
+        color: "transparent"
+        border.width: 3
+        border.color: Theme.fg
+        opacity: root.intro
+    }
+
+    // ---- info under the tile ----
     Item {
         id: info
-        x: root.lead
-        y: list.y + list.height + 14 * root.u
-        width: root.width - 2 * root.lead
-        height: 190 * root.u
+        x: root.left
+        y: 346
+        width: 900
+        opacity: root.intro * root.infoIn
+        transform: Translate { x: (1 - root.infoIn) * 18 }
 
-        property var shown: null
-        property real swap: 1
-        opacity: swap * root.reveal
-        transform: Translate { y: (1 - info.swap) * 14 * root.u }
-
-        readonly property bool isLib: shown !== null && shown.isLibrary === true
-        readonly property real todaySecs: (shown && !isLib) ? ScreenTime.sum(shown, 1) : 0
-        readonly property real weekSecs: (shown && !isLib) ? ScreenTime.sum(shown, 7) : 0
-
-        Component.onCompleted: shown = root.currentEntry
-
-        Connections {
-            target: root
-            function onCurrentEntryChanged() { swapAnim.restart(); }
+        Txt {
+            id: title
+            width: parent.width
+            text: root.cur ? root.cur.name : ""
+            font.pixelSize: 40
+            font.weight: Font.Bold
+        }
+        Txt {
+            y: 50
+            width: parent.width
+            text: root.subtitle(root.cur)
+            font.pixelSize: 16
+            color: Theme.fgDim
         }
 
-        SequentialAnimation {
-            id: swapAnim
-            NumberAnimation { target: info; property: "swap"; to: 0; duration: 80 }
-            ScriptAction { script: info.shown = root.currentEntry }
-            NumberAnimation {
-                target: info; property: "swap"; to: 1
-                duration: Motion.focus + 140
-                easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out
-            }
-        }
-
-        Column {
-            spacing: 6 * root.u
-
-            Text {
-                text: info.shown ? info.shown.name : ""
-                font.family: Theme.fontFamily
-                font.pixelSize: 34 * root.u
-                font.weight: Font.DemiBold
-                color: Theme.fg
-                elide: Text.ElideRight
-                width: info.width
-            }
-
-            Text {
-                text: info.isLib ? "All installed apps"
-                    : (info.shown ? (info.shown.genericName || info.shown.comment || "") : "")
-                font.family: Theme.fontFamily
-                font.pixelSize: 15 * root.u
-                color: Theme.fgDim
-                elide: Text.ElideRight
-                width: info.width * 0.7
-            }
-
-            Item { width: 1; height: 12 * root.u }
-
+        Rectangle {
+            y: 90
+            width: 156; height: 48; radius: 24
+            color: Theme.fg
             Row {
-                spacing: 34 * root.u
-
-                // Open pill
-                Rectangle {
-                    id: pill
-                    width: pillText.width + 70 * root.u
-                    height: 52 * root.u
-                    radius: height / 2
-                    color: "white"
-                    scale: root.rowFocus ? 1 : 0.95
-                    opacity: root.rowFocus ? 1 : 0.7
-                    Behavior on scale { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-                    Behavior on opacity { NumberAnimation { duration: Motion.focus } }
-
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 12 * root.u
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: info.isLib ? "\uf00a" : "\uf04b"
-                            font.family: Theme.iconFont
-                            font.pixelSize: 16 * root.u
-                            color: "#101114"
-                        }
-                        Text {
-                            id: pillText
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: info.isLib ? "Browse" : "Open"
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 19 * root.u
-                            font.weight: Font.DemiBold
-                            color: "#101114"
+                anchors.centerIn: parent
+                spacing: 10
+                Item {
+                    width: 14; height: 22
+                    Shape {
+                        y: 3
+                        ShapePath {
+                            strokeWidth: -1
+                            fillColor: "#0b0d12"
+                            startX: 0; startY: 0
+                            PathLine { x: 14; y: 8 }
+                            PathLine { x: 0; y: 16 }
+                            PathLine { x: 0; y: 0 }
                         }
                     }
                 }
-
-                // screen time
-                Column {
-                    visible: !info.isLib
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 9 * root.u
-
-                    Row {
-                        spacing: 30 * root.u
-                        Column {
-                            Text {
-                                text: "TODAY"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11 * root.u
-                                font.letterSpacing: 1.6
-                                color: Theme.fgDim
-                            }
-                            Text {
-                                text: ScreenTime.fmt(info.todaySecs)
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 24 * root.u
-                                font.weight: Font.DemiBold
-                                color: Theme.fg
-                            }
-                        }
-                        Column {
-                            Text {
-                                text: "7 DAYS"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11 * root.u
-                                font.letterSpacing: 1.6
-                                color: Theme.fgDim
-                            }
-                            Text {
-                                text: ScreenTime.fmt(info.weekSecs)
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 24 * root.u
-                                font.weight: Font.DemiBold
-                                color: Theme.fg
-                            }
-                        }
-                    }
-
-                    // progress bar (this app vs the most used app of the week)
-                    Rectangle {
-                        width: 250 * root.u
-                        height: 6 * root.u
-                        radius: height / 2
-                        color: Qt.rgba(1, 1, 1, 0.18)
-                        Rectangle {
-                            height: parent.height
-                            radius: height / 2
-                            color: Theme.accent
-                            width: root.weekMax > 0 ? parent.width * Math.min(1, info.weekSecs / root.weekMax) : 0
-                            Behavior on width {
-                                NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-                            }
-                        }
-                    }
+                Txt {
+                    text: root.cur && root.cur.isLibrary === true ? "Browse" : "Open"
+                    font.pixelSize: 19
+                    font.weight: Font.Bold
+                    color: "#0b0d12"
                 }
             }
+            MouseArea { anchors.fill: parent; onClicked: root.activate() }
+        }
+
+        InfoCards {
+            y: 176
+            entry: root.cur
+            topSum: root.topSum
+            opacity: root.cur && root.cur.isLibrary === true ? 0 : 1
+            Behavior on opacity { NumberAnimation { duration: 220 } }
         }
     }
 }
