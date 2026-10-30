@@ -21,7 +21,7 @@ esac
 # Icons are mostly transparent; flatten onto neutral grey so empty pixels don't read as black.
 magick "$tmp" -background '#777777' -alpha remove -alpha off "$tmp" 2>/dev/null
 
-json="$(matugen image "$tmp" --dry-run --json hex --mode dark 2>/dev/null)" || exit 1
+json="$(matugen image "$tmp" --dry-run --json hex --mode dark --prefer saturation 2>>"$cache/.err")" || exit 1
 [[ "$json" == *"{"* ]] || exit 1
 
 printf '%s' "$json" > "$out.tmp" && mv "$out.tmp" "$out"

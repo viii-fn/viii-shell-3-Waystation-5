@@ -19,7 +19,7 @@ Item {
     readonly property real small: 132
     readonly property real sel: 212
     readonly property real gap: 18
-    readonly property real left: 72
+    readonly property real padL: 72
     readonly property real cy: 214
     readonly property real d: sel - small
     readonly property real ringCorner: sel * 0.13
@@ -50,7 +50,7 @@ Item {
         return f * (small + gap) + d * fr * (1 - fr);
     }
     function wOf(i) { return small + d * tent(i); }
-    function xOf(i) { return left + i * (small + gap) + d * tsum(i) - scrollOff; }
+    function xOf(i) { return padL + i * (small + gap) + d * tsum(i) - scrollOff; }
     function stage(i) {                    // staggered entrance, 0..1
         const p = Math.max(0, Math.min(1, (intro - Math.min(i, 9) * 0.05) / 0.55));
         return 1 - Math.pow(1 - p, 3);
@@ -70,7 +70,7 @@ Item {
         return true;
     }
     function reset() { animateF = false; current = 0; f = 0; animateF = true; }
-    function activate() { if (cur) launched(cur, left, cy - sel / 2, sel, sel); }
+    function activate() { if (cur) launched(cur, padL, cy - sel / 2, sel, sel); }
     function subtitle(e) {
         if (!e) return "";
         if (e.isLibrary === true) return "Browse every installed app";
@@ -86,7 +86,7 @@ Item {
 
     // glow under the focused tile (declared before the tiles so it sits behind them)
     RectangularShadow {
-        x: root.left; y: root.cy - root.sel / 2
+        x: root.padL; y: root.cy - root.sel / 2
         width: root.sel; height: root.sel
         radius: root.ringCorner
         blur: 46
@@ -126,7 +126,7 @@ Item {
 
     // focus ring: white outline with a gap, fixed at the left margin
     Rectangle {
-        x: root.left - 7; y: root.cy - root.sel / 2 - 7
+        x: root.padL - 7; y: root.cy - root.sel / 2 - 7
         width: root.sel + 14; height: root.sel + 14
         radius: root.ringCorner + 7
         color: "transparent"
@@ -138,7 +138,7 @@ Item {
     // ---- info under the tile ----
     Item {
         id: info
-        x: root.left
+        x: root.padL
         y: 346
         width: 900
         opacity: root.intro * root.infoIn
