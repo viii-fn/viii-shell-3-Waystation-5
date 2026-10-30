@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# viii: tiny control script for viii-shell-3
+case "${1:-}" in
+  start)   qs kill -c glyph 2>/dev/null; qs kill -c viii 2>/dev/null; exec qs -c viii -d ;;
+  stop)    exec qs kill -c viii ;;
+  restart) qs kill -c viii 2>/dev/null; sleep 0.3; exec qs -c viii -d ;;
+  log)     exec qs log -c viii ;;
+  glyph)   qs kill -c viii 2>/dev/null; exec qs -c glyph -d ;;   # go back to the old shell
+  *)       echo "usage: viii start | stop | restart | log | glyph" ;;
+esac
