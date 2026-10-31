@@ -13,3 +13,25 @@ if not ok then
     local f = io.open((os.getenv("HOME") or "") .. "/.cache/viii/hypr-lua.log", "a")
     if f then f:write("viii.lua failed to load: " .. tostring(err) .. "\n"); f:close() end
 end
+
+---------------
+---- INPUT ----
+---------------
+
+hl.config({
+    input = {
+        kb_layout  = "gb",   -- was "us"
+        kb_variant = "",
+        kb_model   = "",
+        kb_options = "",
+        kb_rules   = "",
+
+        follow_mouse = 1,
+
+        sensitivity = 0, -- -1.0 - 1.0, 0 means no modification.
+
+        touchpad = {
+            natural_scroll = false,
+        },
+    },
+})
