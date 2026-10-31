@@ -84,7 +84,7 @@ Item {
         id: swap
         NumberAnimation { target: ghost; property: "opacity"; to: 0; duration: 140 }
         ScriptAction { script: ghost.source = root.icon }
-        NumberAnimation { target: ghost; property: "opacity"; to: ghost.status === Image.Error ? 0 : 0.10; duration: 420; easing.type: Easing.OutCubic }
+        NumberAnimation { target: ghost; property: "opacity"; to: ghost.status === Image.Error ? 0 : 0.30; duration: 420; easing.type: Easing.OutCubic }
     }
     onIconChanged: swap.restart()
 
