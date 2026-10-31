@@ -5,21 +5,15 @@ import Quickshell.Hyprland
 import "../core"
 import "../hub"
 
-// PS5-style notification toast: a wide, dark glass banner at the top centre with a rounded-square icon tile,
-// a bold title and a dim body. It glides down, holds, and glides back up.
-// Shows regular notifications and charger plug/unplug events (all state lives in core/Notifs.qml).
-// Drawn in a 1366x768 design space and scaled to the screen, so it keeps its proportions on any display.
-// Click-through, no keyboard focus, above everything (also over the hub and fullscreen windows).
-// The window stays mapped (fully transparent when idle), so Hyprland never plays its own layer animation on it.
 PanelWindow {
     id: win
 
     readonly property real s: screen ? Math.max(0.7, Math.min(screen.width / 1366, screen.height / 768)) : 1
 
     anchors { top: true }
-    margins { top: Math.round(28 * win.s) }
-    implicitWidth: Math.ceil(640 * win.s)
-    implicitHeight: Math.ceil(200 * win.s)
+    margins { top: Math.round(20 * win.s) }
+    implicitWidth: Math.ceil(460 * win.s)
+    implicitHeight: Math.ceil(130 * win.s)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     mask: Region {}
@@ -32,7 +26,6 @@ PanelWindow {
     readonly property var e: Notifs.current
     readonly property bool on: Notifs.shown && isFocusedMon
 
-    // 0 = hidden, 1 = fully shown
     property real vis: on ? 1 : 0
     Behavior on vis {
         NumberAnimation {
@@ -42,7 +35,6 @@ PanelWindow {
         }
     }
 
-    // small scale pulse when a new toast replaces the one on screen (e.g. the charger event)
     property real pulse: 1
     SequentialAnimation {
         id: pulseAnim
@@ -65,18 +57,18 @@ PanelWindow {
 
     Item {
         id: stage
-        width: 640
-        height: 200
+        width: 460
+        height: 130
         scale: win.s
         transformOrigin: Item.TopLeft
 
         Rectangle {
             id: card
-            width: 580
-            height: Math.max(92, col.implicitHeight + 38)
+            width: 420
+            height: Math.max(68, col.implicitHeight + 26)
             x: (stage.width - width) / 2
-            y: 6 - (1 - win.vis) * 70
-            radius: 18
+            y: 4 - (1 - win.vis) * 50
+            radius: 14
             opacity: win.vis
             scale: (0.96 + 0.04 * win.vis) * win.pulse
             transformOrigin: Item.Top
@@ -84,22 +76,21 @@ PanelWindow {
             border.width: 1
             border.color: (win.e && win.e.urgency === 2) ? "#ff6b6b" : Qt.rgba(1, 1, 1, 0.16)
 
-            // rounded-square icon tile: the app's icon, its first letter, or a bolt for charger events
             Rectangle {
                 id: tile
-                x: 18
+                x: 12
                 anchors.verticalCenter: parent.verticalCenter
-                width: 64
-                height: 64
-                radius: 14
+                width: 44
+                height: 44
+                radius: 10
                 color: Qt.rgba(1, 1, 1, 0.10)
 
                 Image {
                     id: img
                     anchors.centerIn: parent
-                    width: 40
-                    height: 40
-                    sourceSize: Qt.size(80, 80)
+                    width: 26
+                    height: 26
+                    sourceSize: Qt.size(60, 60)
                     asynchronous: true
                     fillMode: Image.PreserveAspectFit
                     source: win.iconSrc(win.e)
@@ -109,15 +100,15 @@ PanelWindow {
                     anchors.centerIn: parent
                     visible: !!win.e && win.e.kind === "app" && !img.visible
                     text: ((win.e && (win.e.app || win.e.title)) || "?").charAt(0).toUpperCase()
-                    font.pixelSize: 28
+                    font.pixelSize: 20
                     font.weight: Font.Bold
                 }
                 Canvas {
                     id: bolt
                     anchors.centerIn: parent
-                    width: 16
-                    height: 26
-                    scale: 1.45
+                    width: 12
+                    height: 20
+                    scale: 1.2
                     visible: !!win.e && win.e.kind === "power"
                     property var ent: win.e
                     property color ink: Theme.accent
@@ -141,9 +132,8 @@ PanelWindow {
                         ctx.closePath();
                         ctx.fill();
                         if (!plugged) {
-                            // slash through the bolt = unplugged
                             ctx.strokeStyle = "#f5f7fb";
-                            ctx.lineWidth = 2.2;
+                            ctx.lineWidth = 2.0;
                             ctx.lineCap = "round";
                             ctx.beginPath();
                             ctx.moveTo(1.5, 24.5);
@@ -156,15 +146,15 @@ PanelWindow {
 
             Column {
                 id: col
-                x: 100
+                x: 68
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 100 - 26
-                spacing: 3
+                width: parent.width - 68 - 18
+                spacing: 2
                 Txt {
                     width: parent.width
                     visible: !!win.e && win.e.kind === "app" && !!win.e.app && win.e.app !== win.e.title
                     text: win.e ? (win.e.app || "") : ""
-                    font.pixelSize: 13
+                    font.pixelSize: 11
                     color: Theme.fgDim
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
@@ -172,7 +162,7 @@ PanelWindow {
                 Txt {
                     width: parent.width
                     text: win.e ? win.e.title : ""
-                    font.pixelSize: 22
+                    font.pixelSize: 16
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
@@ -181,7 +171,7 @@ PanelWindow {
                     width: parent.width
                     visible: text !== ""
                     text: win.e ? win.e.body : ""
-                    font.pixelSize: 17
+                    font.pixelSize: 13
                     color: Theme.fgDim
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
