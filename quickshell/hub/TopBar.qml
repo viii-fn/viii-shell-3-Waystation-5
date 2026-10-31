@@ -63,44 +63,10 @@ Item {
 
     Row {
         anchors.right: parent.right
-        anchors.rightMargin: 72
+        anchors.rightMargin: 35
         y: 38
         spacing: 24
         layoutDirection: Qt.LeftToRight
-
-        // Settings gear, matching the PS5 home screen's top-right utility icons.
-        Item {
-            width: 42; height: 42
-            readonly property bool hot: gearArea.containsMouse || root.gearFocus
-            scale: gearArea.pressed ? 0.94 : (hot ? 1.08 : 1)
-            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-            // hover surface fades by opacity (a colour fade from "transparent" dips through black)
-            Rectangle {
-                anchors.fill: parent
-                radius: 21
-                color: Theme.glassHi
-                border.width: 1
-                border.color: Theme.glassBorder
-                opacity: parent.hot ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 140 } }
-            }
-            Txt {
-                anchors.centerIn: parent
-                text: ""
-                font.family: Theme.iconFont
-                font.pixelSize: 21
-                color: Theme.fg
-                rotation: parent.hot ? 60 : 0
-                Behavior on rotation { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-            }
-            MouseArea {
-                id: gearArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.settingsClicked()
-            }
-        }
 
         // Notification history bell (opens the history page; SUPER+N does the same).
         Item {
@@ -186,12 +152,38 @@ Item {
             Txt { x: 52; y: (42 - height) / 2; text: Math.round(Math.max(0, parent.pct) * 100) + "%"; font.pixelSize: 16 }
         }
 
-        // clock
-        Txt {
-            y: (42 - height) / 2
-            text: Qt.formatDateTime(clk.date, "HH:mm")
-            font.pixelSize: 24
-            font.weight: Font.Medium
+        // Settings gear, matching the PS5 home screen's top-right utility icons.
+        Item {
+            width: 42; height: 42
+            readonly property bool hot: gearArea.containsMouse || root.gearFocus
+            scale: gearArea.pressed ? 0.94 : (hot ? 1.08 : 1)
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            // hover surface fades by opacity (a colour fade from "transparent" dips through black)
+            Rectangle {
+                anchors.fill: parent
+                radius: 21
+                color: Theme.glassHi
+                border.width: 1
+                border.color: Theme.glassBorder
+                opacity: parent.hot ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+            }
+            Txt {
+                anchors.centerIn: parent
+                text: ""
+                font.family: Theme.iconFont
+                font.pixelSize: 21
+                color: Theme.fg
+                rotation: parent.hot ? 60 : 0
+                Behavior on rotation { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            }
+            MouseArea {
+                id: gearArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.settingsClicked()
+            }
         }
 
         // avatar
@@ -210,6 +202,14 @@ Item {
                 font.weight: Font.Bold
                 color: Theme.accentText
             }
+        }
+        
+        // clock
+        Txt {
+            y: (42 - height) / 2
+            text: Qt.formatDateTime(clk.date, "HH:mm")
+            font.pixelSize: 24
+            font.weight: Font.Medium
         }
     }
 }
