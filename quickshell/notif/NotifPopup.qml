@@ -162,8 +162,7 @@ PanelWindow {
                 Txt {
                     width: parent.width
                     text: win.e ? win.e.title : ""
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
+                    font.pixelSize: 13
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }
