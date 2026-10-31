@@ -44,7 +44,7 @@ try("general", hl.config, {
 
 try("decoration", hl.config, {
     decoration = {
-        rounding         = 10,
+        rounding         = 15,
         rounding_power   = 2,
         active_opacity   = 1,
         inactive_opacity = 1,

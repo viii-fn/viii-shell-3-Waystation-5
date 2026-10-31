@@ -20,7 +20,13 @@ Singleton {
     property int briPending: 0
 
     signal libraryRequested()
+    signal settingsRequested()
     signal psTap()
+
+    function openSettings() {
+        summoned = true;
+        settingsRequested();
+    }
     signal psHold()
     signal osdRequested(string kind, int value)
 

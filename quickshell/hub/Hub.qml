@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../core"
+import "../settings"
 
 // One hub per monitor. A layer-shell window that is shown when the monitor's workspace is empty
 // (base layer) or when summoned. Design space is 1366x768, scaled uniformly to the actual screen.
@@ -76,6 +77,7 @@ PanelWindow {
     Connections {
         target: Desk
         function onLibraryRequested() { win.page = 1; win.tabsFocus = false; }
+        function onSettingsRequested() { if (win.isFocusedMon) win.openSettings(); }
     }
 
     onShownChanged: {
@@ -84,6 +86,7 @@ PanelWindow {
             rebuild();
             page = 0;
             tabsFocus = false;
+            settingsOpen = false;
             launching = false;
             fx.reset();
             intro = 0;
@@ -134,7 +137,24 @@ PanelWindow {
     Timer { id: abortTimer; interval: 2800; onTriggered: { if (win.shown) fx.abort(); win.launching = false; } }
 
     property bool storeOpen: false
+    property bool settingsOpen: false
+
     function openStore() { storeOpen = true; Theme.applyWallpaper(); }
+    function openSettings() {
+        settingsOpen = true;
+        Theme.applyWallpaper();
+        storeOpen = false;
+        launching = false;
+        settings.categoryIndex = 0;
+        settings.rowIndex = 0;
+        settings.pane = 0;
+        root.forceActiveFocus();
+        settings.forceActiveFocus();
+    }
+    function closeSettings() {
+        settingsOpen = false;
+        root.forceActiveFocus();
+    }
 
     // ---- actions ----
     function launch(entry, x, y, w, h) {
@@ -170,6 +190,7 @@ PanelWindow {
     }
 
     function handleKey(e) {
+        if (settingsOpen) { settings.handleKey(e); return; }
         if (storeOpen) { store.handleKey(e); return; }
         if (launching) { e.accepted = true; return; }
         let handled = true;
@@ -215,8 +236,10 @@ PanelWindow {
                 width: parent.width
                 page: win.page
                 tabsFocus: win.tabsFocus
-                opacity: Math.min(1, win.intro * 2.5)
+                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal)
+                visible: opacity > 0.01
                 onTabClicked: index => { win.page = index; win.tabsFocus = false; }
+                onSettingsClicked: win.openSettings()
             }
 
             HomePage {
@@ -224,8 +247,8 @@ PanelWindow {
                 width: parent.width
                 height: parent.height
                 intro: win.intro
-                opacity: 1 - win.pageT
-                y: -26 * win.pageT
+                opacity: (1 - win.pageT) * (1 - settings.reveal)
+                y: -26 * win.pageT - 18 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
             }
@@ -234,8 +257,8 @@ PanelWindow {
                 id: lib
                 width: parent.width
                 height: parent.height
-                opacity: win.pageT
-                y: 26 * (1 - win.pageT)
+                opacity: win.pageT * (1 - settings.reveal)
+                y: 26 * (1 - win.pageT) - 18 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
             }
@@ -245,7 +268,7 @@ PanelWindow {
                 anchors.rightMargin: 72
                 y: parent.height - 56
                 spacing: 28
-                opacity: Math.min(1, win.intro * 2)
+                opacity: Math.min(1, win.intro * 2) * (1 - settings.reveal)
                 Hint { key: "\u2190 \u2192"; label: "Browse" }
                 Hint { key: "Enter"; label: win.page === 0 && win.sel && win.sel.isLibrary === true ? "Browse" : "Open" }
                 Hint { key: "Tab"; label: "Switch" }
@@ -262,6 +285,23 @@ PanelWindow {
             LaunchFx {
                 id: fx
                 anchors.fill: parent
+            }
+
+            SettingsPage {
+                id: settings
+                anchors.fill: parent
+                active: win.settingsOpen
+                visible: win.settingsOpen || settings.reveal > 0.01
+                enabled: win.settingsOpen
+                onCloseRequested: win.closeSettings()
+                onWallstoreRequested: { win.closeSettings(); win.openStore(); }
+                onLibraryRequested: { win.closeSettings(); win.page = 1; win.tabsFocus = false; }
+            }
+            Connections {
+                target: settings
+                function onRevealChanged() {
+                    if (!win.settingsOpen && settings.reveal < 0.01) win.tint();
+                }
             }
         }
     }

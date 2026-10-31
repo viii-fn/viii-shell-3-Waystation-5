@@ -56,6 +56,10 @@ ShellRoot {
     // PS button: hypr/viii.lua binds one key twice (press and release) to tell a tap from a hold.
     // Desk.psDown/psUp ignore repeats, so it is safe if Hyprland also reports the release on the press bind.
     GlobalShortcut {
+        appid: "shell"; name: "settings"; description: "Open Settings"
+        onPressed: Desk.openSettings()
+    }
+    GlobalShortcut {
         appid: "shell"; name: "psDown"; description: "PS button pressed"
         onPressed: Desk.psDown()
         onReleased: Desk.psUp()

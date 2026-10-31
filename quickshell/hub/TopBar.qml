@@ -9,6 +9,7 @@ Item {
     property int page: 0
     property bool tabsFocus: false
     signal tabClicked(int index)
+    signal settingsClicked()
 
     height: 110
 
@@ -63,6 +64,35 @@ Item {
         y: 38
         spacing: 24
         layoutDirection: Qt.LeftToRight
+
+        // Settings gear, matching the PS5 home screen's top-right utility icons.
+        Item {
+            width: 42; height: 42
+            scale: gearArea.containsMouse ? 1.08 : 1
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Rectangle {
+                anchors.fill: parent
+                radius: 21
+                color: gearArea.containsMouse ? Theme.glassHi : "transparent"
+                border.width: gearArea.containsMouse ? 1 : 0
+                border.color: Theme.glassBorder
+                Behavior on color { ColorAnimation { duration: 140 } }
+            }
+            Txt {
+                anchors.centerIn: parent
+                text: ""
+                font.family: Theme.iconFont
+                font.pixelSize: 21
+                color: Theme.fg
+            }
+            MouseArea {
+                id: gearArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.settingsClicked()
+            }
+        }
 
         // battery
         Item {
