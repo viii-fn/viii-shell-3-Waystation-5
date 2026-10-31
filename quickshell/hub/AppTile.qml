@@ -8,7 +8,7 @@ Item {
     property var entry: null
     property real dim: 0                 // 0 = normal, 1 = fully dimmed (unfocused)
     property real corner: Math.min(width, height) * 0.13
-    property real iconScale: 0.58
+    property real iconScale: 0.4
     property real iconOpacity: 1
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
@@ -33,7 +33,7 @@ Item {
         border.color: Qt.rgba(1, 1, 1, 0.10)
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.tint(root.pal.primaryContainer, Qt.alpha(root.pal.primary, 0.40)) }
-            GradientStop { position: 1.0; color: Qt.darker(root.pal.surface, 1.15) }
+            GradientStop { position: 1.0; color: Qt.darker(root.pal.surface, 5.15) }
         }
     }
 
@@ -54,7 +54,7 @@ Item {
         width: Math.min(root.width, root.height) * root.iconScale
         height: width
         source: root.src
-        sourceSize: Qt.size(128, 128)
+        sourceSize: Qt.size(168, 168)
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         smooth: true
