@@ -3,7 +3,7 @@ fish_add_path -g ~/.local/bin
 
 if status is-login
     if test (tty) = "/dev/tty1"
-        exec Hyprland
+        exec start-hyprland
     end
 end
 

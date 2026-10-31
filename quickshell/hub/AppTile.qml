@@ -8,7 +8,7 @@ Item {
     property var entry: null
     property real dim: 0                 // 0 = normal, 1 = fully dimmed (unfocused)
     property real corner: Math.min(width, height) * 0.13
-    property real iconScale: 0.4
+    property real iconScale: 0.7
     property real iconOpacity: 1
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
