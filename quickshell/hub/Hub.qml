@@ -34,6 +34,7 @@ PanelWindow {
     // ---- state ----
     property int page: 0                 // 0 = Apps (home row), 1 = Library
     property bool tabsFocus: false
+    property bool gearFocus: false       // top-bar Settings gear has keyboard focus
     property bool launching: false
     property real intro: 0
     property real pageT: page
@@ -83,6 +84,7 @@ PanelWindow {
     onShownChanged: {
         if (shown) {
             resetTimer.stop();
+            gearFocus = false;
             rebuild();
             page = 0;
             tabsFocus = false;
@@ -169,21 +171,27 @@ PanelWindow {
     }
 
     function horiz(d) {
-        if (tabsFocus) page = Math.max(0, Math.min(1, page + d));
+        if (tabsFocus) {
+            if (gearFocus) { if (d < 0) gearFocus = false; }
+            else if (page === 1 && d > 0) gearFocus = true;
+            else page = Math.max(0, Math.min(1, page + d));
+        }
         else if (page === 0) home.move(d);
         else lib.move(d, 0);
     }
     function vert(d) {
-        if (tabsFocus) { if (d > 0) tabsFocus = false; }
+        if (tabsFocus) { if (d > 0) { tabsFocus = false; gearFocus = false; } }
         else if (page === 0) { if (d < 0) tabsFocus = true; }
         else { if (!lib.move(0, d) && d < 0) tabsFocus = true; }
     }
     function choose() {
+        if (tabsFocus && gearFocus) { openSettings(); return; }
         if (tabsFocus) tabsFocus = false;
         else if (page === 0) home.activate();
         else lib.activate();
     }
     function back() {
+        gearFocus = false;
         if (tabsFocus) tabsFocus = false;
         else if (page === 1) page = 0;
         else Desk.summoned = false;
@@ -200,7 +208,7 @@ PanelWindow {
         case Qt.Key_Up: case Qt.Key_K: vert(-1); break;
         case Qt.Key_Down: case Qt.Key_J: vert(1); break;
         case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: choose(); break;
-        case Qt.Key_Tab: page = 1 - page; tabsFocus = false; break;
+        case Qt.Key_Tab: page = 1 - page; tabsFocus = false; gearFocus = false; break;
         case Qt.Key_Escape: back(); break;
         default: handled = false;
         }
@@ -236,6 +244,7 @@ PanelWindow {
                 width: parent.width
                 page: win.page
                 tabsFocus: win.tabsFocus
+                gearFocus: win.gearFocus
                 opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal)
                 visible: opacity > 0.01
                 onTabClicked: index => { win.page = index; win.tabsFocus = false; }
@@ -249,6 +258,7 @@ PanelWindow {
                 intro: win.intro
                 opacity: (1 - win.pageT) * (1 - settings.reveal)
                 y: -26 * win.pageT - 18 * settings.reveal
+                scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
             }
@@ -259,6 +269,7 @@ PanelWindow {
                 height: parent.height
                 opacity: win.pageT * (1 - settings.reveal)
                 y: 26 * (1 - win.pageT) - 18 * settings.reveal
+                scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
             }

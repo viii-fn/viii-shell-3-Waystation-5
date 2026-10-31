@@ -8,6 +8,7 @@ Item {
     id: root
     property int page: 0
     property bool tabsFocus: false
+    property bool gearFocus: false
     signal tabClicked(int index)
     signal settingsClicked()
 
@@ -33,7 +34,7 @@ Item {
                     anchors.fill: parent
                     radius: 21
                     color: Theme.glassHi
-                    opacity: (tab.cur && root.tabsFocus) ? 1 : 0
+                    opacity: (tab.cur && root.tabsFocus && !root.gearFocus) ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
                 Txt {
@@ -68,15 +69,18 @@ Item {
         // Settings gear, matching the PS5 home screen's top-right utility icons.
         Item {
             width: 42; height: 42
-            scale: gearArea.containsMouse ? 1.08 : 1
+            readonly property bool hot: gearArea.containsMouse || root.gearFocus
+            scale: gearArea.pressed ? 0.94 : (hot ? 1.08 : 1)
             Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            // hover surface fades by opacity (a colour fade from "transparent" dips through black)
             Rectangle {
                 anchors.fill: parent
                 radius: 21
-                color: gearArea.containsMouse ? Theme.glassHi : "transparent"
-                border.width: gearArea.containsMouse ? 1 : 0
+                color: Theme.glassHi
+                border.width: 1
                 border.color: Theme.glassBorder
-                Behavior on color { ColorAnimation { duration: 140 } }
+                opacity: parent.hot ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 140 } }
             }
             Txt {
                 anchors.centerIn: parent
@@ -84,6 +88,8 @@ Item {
                 font.family: Theme.iconFont
                 font.pixelSize: 21
                 color: Theme.fg
+                rotation: parent.hot ? 60 : 0
+                Behavior on rotation { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             }
             MouseArea {
                 id: gearArea
@@ -97,12 +103,13 @@ Item {
         // battery
         Item {
             readonly property real pct: UPower.displayDevice ? UPower.displayDevice.percentage : -1
+            readonly property bool charging: !!UPower.displayDevice && (UPower.displayDevice.state === UPowerDeviceState.Charging || UPower.displayDevice.state === UPowerDeviceState.FullyCharged || UPower.displayDevice.state === UPowerDeviceState.PendingCharge)
             visible: pct >= 0
-            width: visible ? 74 : 0
+            width: visible ? 86 : 0
             height: 42
             Rectangle {
                 id: body
-                x: 0; y: 14
+                x: 12; y: 14
                 width: 28; height: 14
                 radius: 4
                 color: "transparent"
@@ -113,11 +120,37 @@ Item {
                     height: parent.height - 6
                     width: Math.max(2, (parent.width - 6) * Math.min(1, Math.max(0, parent.parent.pct)))
                     radius: 2
-                    color: parent.parent.pct < 0.15 ? "#ff6b6b" : Theme.fg
+                    color: parent.parent.charging ? "#6bdc8b" : (parent.parent.pct < 0.15 ? "#ff6b6b" : Theme.fg)
                 }
             }
-            Rectangle { x: 29.5; y: 17.5; width: 3; height: 7; radius: 1.5; color: Theme.fg }
-            Txt { x: 40; y: (42 - height) / 2; text: Math.round(Math.max(0, parent.pct) * 100) + "%"; font.pixelSize: 16 }
+            Rectangle { x: 41.5; y: 17.5; width: 3; height: 7; radius: 1.5; color: Theme.fg }
+            // charging bolt: drawn once, repainted only when the colour changes
+            Canvas {
+                id: bolt
+                x: 0; y: 13
+                width: 10; height: 16
+                property color ink: Theme.fg
+                opacity: parent.charging ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: 220 } }
+                onInkChanged: requestPaint()
+                Component.onCompleted: requestPaint()
+                onPaint: {
+                    const ctx = getContext("2d");
+                    ctx.reset();
+                    ctx.fillStyle = bolt.ink;
+                    ctx.beginPath();
+                    ctx.moveTo(6.5, 0);
+                    ctx.lineTo(0, 9.5);
+                    ctx.lineTo(4.6, 9.5);
+                    ctx.lineTo(3.2, 16);
+                    ctx.lineTo(10, 6);
+                    ctx.lineTo(5.4, 6);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+            Txt { x: 52; y: (42 - height) / 2; text: Math.round(Math.max(0, parent.pct) * 100) + "%"; font.pixelSize: 16 }
         }
 
         // clock

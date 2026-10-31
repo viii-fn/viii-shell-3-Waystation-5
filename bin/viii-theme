@@ -23,6 +23,14 @@ done
 [ -f "$img" ] || { echo "viii-theme: no image (give a path, or --random)"; exit 1; }
 img="$(readlink -f "$img")"
 
+# GTK4: tools like nwg-look symlink ~/.config/gtk-4.0/gtk.css to a root-owned theme file, and matugen then dies
+# with "Permission denied". Keep a real gtk.css that imports that theme plus our colours (viii-colors.css).
+g4="$HOME/.config/gtk-4.0"
+if [ -L "$g4/gtk.css" ]; then
+  t="$(readlink -f "$g4/gtk.css")"
+  rm -f "$g4/gtk.css"
+  { [ -f "$t" ] && printf '@import url("file://%s");\n' "$t"; printf '@import url("file://%s/viii-colors.css");\n' "$g4"; } > "$g4/gtk.css"
+fi
 matugen --config "$P/matugen/$cfg" image "$img" --mode dark --prefer saturation || { echo "viii-theme: matugen failed (nothing changed)"; exit 1; }
 grep -q '"primary": "#' "$HOME/.cache/viii/theme.json" 2>/dev/null || { echo "viii-theme: theme.json has no colours: template syntax problem"; exit 1; }
 
