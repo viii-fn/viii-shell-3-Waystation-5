@@ -70,7 +70,7 @@ Item {
         opacity: root.iconOpacity
         text: root.entry && root.entry.name ? String(root.entry.name).charAt(0).toUpperCase() : "?"
         font.pixelSize: Math.min(root.width, root.height) * 0.46
-        font.weight: Font.Bold
+        font.weight: Font.DemiBold
         color: Qt.lighter(root.pal.primary, 1.15)
     }
 

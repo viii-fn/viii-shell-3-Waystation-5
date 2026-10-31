@@ -128,7 +128,7 @@ Item {
             x: 190
             text: root.cur ? root.cur.name : ""
             font.pixelSize: 40
-            font.weight: Font.Bold
+            font.weight: Font.Light
         }
         Txt {
             y: 80
