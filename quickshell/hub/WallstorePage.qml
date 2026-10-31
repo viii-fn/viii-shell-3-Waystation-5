@@ -114,7 +114,10 @@ Item {
 
     Item {
         id: content
-        anchors.fill: parent
+        width: 1366
+        height: 768
+        x: (root.width - 1366) / 2
+        y: (root.height - 768) / 2
         transform: Translate { y: (1 - root.t) * 30 }
 
         Txt { x: 72; y: 38; text: "Wallstore"; font.pixelSize: 30; font.weight: Font.Bold }

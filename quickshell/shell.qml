@@ -70,6 +70,10 @@ ShellRoot {
         onPressed: Desk.openSettings()
     }
     GlobalShortcut {
+        appid: "shell"; name: "ward"; description: "Open notification history"
+        onPressed: Desk.openHistory()
+    }
+    GlobalShortcut {
         appid: "shell"; name: "psDown"; description: "PS button pressed"
         onPressed: Desk.psDown()
         onReleased: Desk.psUp()

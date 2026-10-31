@@ -71,7 +71,10 @@ PanelWindow {
 
             Loader {
                 id: ld
-                anchors.fill: parent
+                width: 1366
+                height: 768
+                x: (parent.width - 1366) / 2
+                y: (parent.height - 768) / 2
                 active: win.visible
                 source: "CcContent.qml"
                 onLoaded: item.vis = Qt.binding(() => win.vis)

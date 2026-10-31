@@ -815,8 +815,9 @@ FocusScope {
     opacity: reveal
     visible: active || reveal > 0.01
 
-    // One scrim, one blend pass. Wallpaper stays visible beneath it.
+    // The scrim now lives in Hub.qml (full-bleed behind this page), so it is switched off here.
     Rectangle {
+        visible: false
         anchors.fill: parent
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.84) }

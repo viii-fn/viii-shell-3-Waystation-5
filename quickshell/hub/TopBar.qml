@@ -9,8 +9,10 @@ Item {
     property int page: 0
     property bool tabsFocus: false
     property bool gearFocus: false
+    property bool bellFocus: false
     signal tabClicked(int index)
     signal settingsClicked()
+    signal historyClicked()
 
     height: 110
 
@@ -34,7 +36,7 @@ Item {
                     anchors.fill: parent
                     radius: 21
                     color: Theme.glassHi
-                    opacity: (tab.cur && root.tabsFocus && !root.gearFocus) ? 1 : 0
+                    opacity: (tab.cur && root.tabsFocus && !root.gearFocus && !root.bellFocus) ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
                 Txt {
@@ -97,6 +99,37 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.settingsClicked()
+            }
+        }
+
+        // Notification history bell (opens the history page; SUPER+N does the same).
+        Item {
+            width: 42; height: 42
+            readonly property bool hot: bellArea.containsMouse || root.bellFocus
+            scale: bellArea.pressed ? 0.94 : (hot ? 1.08 : 1)
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Rectangle {
+                anchors.fill: parent
+                radius: 21
+                color: Theme.glassHi
+                border.width: 1
+                border.color: Theme.glassBorder
+                opacity: parent.hot ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+            }
+            Txt {
+                anchors.centerIn: parent
+                text: "\uf0f3"
+                font.family: Theme.iconFont
+                font.pixelSize: 20
+                color: Theme.fg
+            }
+            MouseArea {
+                id: bellArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.historyClicked()
             }
         }
 

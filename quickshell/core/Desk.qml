@@ -21,6 +21,7 @@ Singleton {
 
     signal libraryRequested()
     signal settingsRequested()
+    signal wardRequested()
     signal psTap()
 
     function openSettings() {
@@ -33,6 +34,7 @@ Singleton {
     function isEmpty(name) { return empty[name] === true; }
 
     function openLibrary() { summoned = true; libraryRequested(); }
+    function openHistory() { summoned = true; wardRequested(); }
 
     // PS button: bound twice in Hyprland (press, and release). Short press = tap, long press = hold.
     // Both functions are safe to call more than once per physical press.

@@ -77,7 +77,7 @@ Item {
             id: wpImg
             anchors.fill: parent
             source: (root.wallpaper || wpLayer.opacity > 0.01) ? Wall.src(Wall.current) : ""
-            sourceSize.width: 1366
+            sourceSize.width: Math.min(1920, Math.max(1366, Math.round(root.width)))
             fillMode: Image.PreserveAspectCrop
             smooth: true
             asynchronous: true

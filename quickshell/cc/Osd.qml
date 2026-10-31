@@ -9,13 +9,16 @@ import "../hub"
 // Small pop-up at the bottom centre for brightness AND volume. Tiny window, no keyboard focus.
 // Brightness comes from Desk.osdRequested; volume/mute are watched straight from PipeWire,
 // so it shows no matter who changed them (keys, Control Center, another app).
+// Drawn in a 1366x768 design space and scaled to the screen.
 PanelWindow {
     id: win
 
+    readonly property real s: screen ? Math.max(0.7, Math.min(screen.width / 1366, screen.height / 768)) : 1
+
     anchors { bottom: true }
-    margins { bottom: 64 }
-    implicitWidth: 320
-    implicitHeight: 64
+    margins { bottom: Math.round(64 * win.s) }
+    implicitWidth: Math.ceil(320 * win.s)
+    implicitHeight: Math.ceil(64 * win.s)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -90,45 +93,53 @@ PanelWindow {
 
     Timer { id: hideTimer; interval: 1300; onTriggered: win.on = false }
 
-    Rectangle {
-        width: 300
-        height: 56
-        x: 10
-        y: 4 + (1 - win.vis) * 14
-        radius: 28
-        opacity: win.vis
-        color: Qt.alpha(Theme.deep, 0.92)
-        border.width: 1
-        border.color: Theme.glassHi
+    Item {
+        id: stage
+        width: 320
+        height: 64
+        scale: win.s
+        transformOrigin: Item.TopLeft
 
-        Txt {
-            x: 22
-            anchors.verticalCenter: parent.verticalCenter
-            text: win.kind === "volume" ? (win.muted ? "Muted" : "Volume") : "Brightness"
-            font.pixelSize: 15
-            color: Theme.fgDim
-        }
         Rectangle {
-            x: 118
-            anchors.verticalCenter: parent.verticalCenter
-            width: 110
-            height: 8
-            radius: 4
-            color: Theme.glassHi
-            Rectangle {
-                width: win.muted ? 0 : parent.width * Math.max(0, Math.min(1, win.value / 100))
-                height: parent.height
-                radius: 4
-                color: Theme.accent
+            width: 300
+            height: 56
+            x: 10
+            y: 4 + (1 - win.vis) * 14
+            radius: 28
+            opacity: win.vis
+            color: Qt.alpha(Theme.deep, 0.92)
+            border.width: 1
+            border.color: Theme.glassHi
+
+            Txt {
+                x: 22
+                anchors.verticalCenter: parent.verticalCenter
+                text: win.kind === "volume" ? (win.muted ? "Muted" : "Volume") : "Brightness"
+                font.pixelSize: 15
+                color: Theme.fgDim
             }
-        }
-        Txt {
-            anchors.right: parent.right
-            anchors.rightMargin: 22
-            anchors.verticalCenter: parent.verticalCenter
-            text: win.muted ? "off" : win.value + "%"
-            font.pixelSize: 17
-            font.weight: Font.Bold
+            Rectangle {
+                x: 118
+                anchors.verticalCenter: parent.verticalCenter
+                width: 110
+                height: 8
+                radius: 4
+                color: Theme.glassHi
+                Rectangle {
+                    width: win.muted ? 0 : parent.width * Math.max(0, Math.min(1, win.value / 100))
+                    height: parent.height
+                    radius: 4
+                    color: Theme.accent
+                }
+            }
+            Txt {
+                anchors.right: parent.right
+                anchors.rightMargin: 22
+                anchors.verticalCenter: parent.verticalCenter
+                text: win.muted ? "off" : win.value + "%"
+                font.pixelSize: 17
+                font.weight: Font.Bold
+            }
         }
     }
 }
