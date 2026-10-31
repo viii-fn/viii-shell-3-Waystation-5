@@ -118,6 +118,6 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.corner
-        color: Qt.rgba(0, 0, 0, 0.30 * root.dim)
+        color: Qt.rgba(0, 0, 0, 0.40 * root.dim)
     }
 }
