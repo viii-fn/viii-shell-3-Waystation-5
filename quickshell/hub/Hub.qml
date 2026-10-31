@@ -47,6 +47,7 @@ PanelWindow {
     readonly property real dW: width / s
     readonly property real dH: height / s
     readonly property real vOff: Math.max(0, (dH - 768) / 2)
+    readonly property bool appsMissing: home.entries.length <= 2 || lib.entries.length === 0
 
     readonly property var sel: page === 1 ? lib.cur : home.cur
 
@@ -116,6 +117,7 @@ PanelWindow {
             warm.restart();
             tint();
         }
+        Apps.visible();
         retry.start();
     }
 
@@ -124,10 +126,10 @@ PanelWindow {
     // app list can be empty right at startup; try again a few times
     Timer {
         id: retry
-        interval: 1200; repeat: true
+        interval: 700; repeat: true
         property int tries: 0
         onTriggered: {
-            if (home.entries.length > 1 || ++tries > 6) { stop(); return; }
+            if (!win.appsMissing || ++tries > 40) { stop(); return; }
             win.rebuild();
         }
     }
