@@ -14,6 +14,9 @@ Singleton {
     property var files: []
     property string current: ""
     property bool busy: false
+    property bool scanned: false
+    property bool scanFailed: false
+    property string error: ""
 
     function src(p) { return p ? "file://" + encodeURI(p) : ""; }
     function name(p) {
@@ -22,29 +25,36 @@ Singleton {
         const i = b.lastIndexOf(".");
         return i > 0 ? b.slice(0, i) : b;
     }
-    function refresh() { if (!lister.running) lister.running = true; }
+    function refresh() { if (!lister.running) { scanFailed = false; lister.running = true; } }
     function apply(path) {
         if (busy || !path) return;
         busy = true;
+        error = "";
         setter.command = [home + "/.local/bin/viii-theme", path];
         setter.running = true;
     }
 
     Process {
         id: lister
+        onExited: (code, status) => { root.scanned = true; if (code !== 0 && root.files.length === 0) root.scanFailed = true; }
         command: ["find", root.dir, "-maxdepth", "2", "-type", "f", "(", "-iname", "*.jpg", "-o", "-iname", "*.jpeg", "-o", "-iname", "*.png", "-o", "-iname", "*.webp", ")"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const l = this.text.split("\n").filter(s => s.length > 0);
                 l.sort((a, b) => a.localeCompare(b));
                 root.files = l;
+                root.scanned = true;
+                if (l.length > 0) root.scanFailed = false;
             }
         }
     }
 
     Process {
         id: setter
-        onExited: root.busy = false
+        onExited: (code, status) => {
+            root.busy = false;
+            if (code !== 0) root.error = "Couldn\u2019t apply that wallpaper (viii-theme exit " + code + ")";
+        }
     }
 
     FileView {

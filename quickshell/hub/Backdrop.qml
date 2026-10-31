@@ -8,6 +8,7 @@ Item {
     id: root
     property url icon: ""
     property bool shown: true
+    property bool wallpaper: false
     property real drift: 0
 
     Rectangle {
@@ -63,6 +64,26 @@ Item {
         loops: Animation.Infinite
         NumberAnimation { to: 70; duration: 16000; easing.type: Easing.InOutSine }
         NumberAnimation { to: -70; duration: 16000; easing.type: Easing.InOutSine }
+    }
+
+    // full-bleed current wallpaper, shown while the Wallstore tile is selected (unloaded otherwise: 2 GB RAM)
+    Item {
+        id: wpLayer
+        anchors.fill: parent
+        opacity: (root.wallpaper && wpImg.status === Image.Ready) ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+        Image {
+            id: wpImg
+            anchors.fill: parent
+            source: (root.wallpaper || wpLayer.opacity > 0.01) ? Wall.src(Wall.current) : ""
+            sourceSize.width: 1366
+            fillMode: Image.PreserveAspectCrop
+            smooth: true
+            asynchronous: true
+        }
+        // light dim so tiles and text stay readable on bright wallpapers
+        Rectangle { anchors.fill: parent; color: Qt.alpha(Theme.deep, 0.28) }
     }
 
     // ghost of the selected app's icon

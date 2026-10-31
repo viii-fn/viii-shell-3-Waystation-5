@@ -22,16 +22,8 @@ try("curve psInOut", hl.curve, "psInOut", { type = "bezier", points = { { 0.65, 
 try("curve psSoft",  hl.curve, "psSoft",  { type = "bezier", points = { { 0.16, 1.00 }, { 0.30, 1.00 } } })
 
 ---------------------------------------------------------------------------
--- Windows: an app opening slides in from the right while fading up, like a game starting.
--- (speed is in 100ms units: 5.5 = 550ms.)
--- Want it subtler? Change "slide right" to "popin 92%".
+-- Window and layer animations now live in hyprland/look.lua (the demo's spring set).
 ---------------------------------------------------------------------------
-try("anim windowsIn",   hl.animation, { leaf = "windowsIn",   enabled = true, speed = 5.5, bezier = "psOut",   style = "slide right" })
-try("anim windowsOut",  hl.animation, { leaf = "windowsOut",  enabled = true, speed = 4.0, bezier = "psInOut", style = "popin 94%" })
-try("anim windowsMove", hl.animation, { leaf = "windowsMove", enabled = true, speed = 4.0, bezier = "psOut" })
-try("anim fadeIn",      hl.animation, { leaf = "fadeIn",      enabled = true, speed = 5.5, bezier = "psOut" })
-try("anim fadeOut",     hl.animation, { leaf = "fadeOut",     enabled = true, speed = 3.5, bezier = "psInOut" })
--- workspaces are left alone on purpose: your normal scroll stays as it is.
 
 ---------------------------------------------------------------------------
 -- Autostart: the shell starts with Hyprland (full path: ~/.local/bin is not in Hyprland's PATH).

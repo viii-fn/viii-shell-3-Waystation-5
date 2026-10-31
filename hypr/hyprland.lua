@@ -3,6 +3,10 @@
 require("hyprland.rules")
 require("hyprland.keybinds")
 
+-- look and feel (borders, rounding, shadow, blur, animations). pcall: can never break the rest.
+package.loaded["hyprland.look"] = nil
+pcall(require, "hyprland.look")
+
 -- pcall: a mistake in viii.lua can never break the rest. Errors go to ~/.cache/viii/hypr-lua.log
 local ok, err = pcall(require, "viii")
 if not ok then

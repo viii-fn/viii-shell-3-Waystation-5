@@ -69,7 +69,7 @@ Item {
         current = n;
         return true;
     }
-    function reset() { animateF = false; current = (entries.length > 1 && entries[0].isWall === true) ? 1 : 0; f = current; animateF = true; }
+    function reset() { animateF = false; current = 0; f = current; animateF = true; }
     function activate() { if (cur) launched(cur, padL, cy - sel / 2, sel, sel); }
     function subtitle(e) {
         if (!e) return "";
@@ -191,30 +191,16 @@ Item {
             MouseArea { anchors.fill: parent; onClicked: root.activate() }
         }
 
-        // current wallpaper, shown while the Wallstore tile is selected
-        Item {
-            x: 640; y: 0
-            width: 540; height: 304
+        // name of the current wallpaper, shown while the Wallstore tile is selected
+        Txt {
+            y: 176
             opacity: root.cur && root.cur.isWall === true ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 220 } }
-            Rectangle { anchors.fill: parent; radius: 18; color: Theme.glass; border.width: 1; border.color: Theme.glassBorder }
-            Image {
-                anchors.fill: parent
-                anchors.margins: 6
-                source: Wall.src(Wall.current)
-                sourceSize.width: 640
-                fillMode: Image.PreserveAspectCrop
-                clip: true
-                asynchronous: true
-            }
-            Txt {
-                x: 6; y: parent.height + 10
-                text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
-                font.pixelSize: 11
-                font.letterSpacing: 1.6
-                color: Theme.fgDim
-            }
+            text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
+            font.pixelSize: 12
+            font.letterSpacing: 1.6
+            color: Theme.fgDim
         }
 
         InfoCards {
