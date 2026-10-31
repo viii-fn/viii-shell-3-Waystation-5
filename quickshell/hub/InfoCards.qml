@@ -24,7 +24,7 @@ Row {
         property string label: ""
         height: 124
         radius: 18
-        color: "#000000"
+        color: "#111111"
         border.width: 1
         border.color: Theme.glass
         Txt {
