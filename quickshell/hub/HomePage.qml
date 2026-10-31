@@ -95,7 +95,7 @@ Item {
             readonly property real t: root.stage(index)
 
             x: root.xOf(index) + (1 - t) * 454
-            y: root.cy - w / 2 + (1 - t) * 26
+            y: root.cy - w / 4 + (1 - t) * 26
             width: w
             height: w
             opacity: t * Math.min(1, Math.max(0, 1 - (root.f - index)))

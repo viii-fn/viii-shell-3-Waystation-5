@@ -58,7 +58,7 @@ PanelWindow {
     }
 
     function rebuild() {
-        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }].concat(Apps.ranked(6)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
         home.reset();
         lib.entries = Apps.alphabetical();
         lib.reset();
