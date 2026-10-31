@@ -117,7 +117,7 @@ Item {
     Item {
         id: info
         x: root.padL
-        y: 346
+        y: 290
         width: 900
         opacity: root.intro * root.infoIn
         transform: Translate { x: (1 - root.infoIn) * 18 }
@@ -125,12 +125,13 @@ Item {
         Txt {
             id: title
             width: parent.width
+            x: 190
             text: root.cur ? root.cur.name : ""
             font.pixelSize: 40
             font.weight: Font.Bold
         }
         Txt {
-            y: 50
+            y: 80
             width: parent.width
             text: root.subtitle(root.cur)
             font.pixelSize: 16
@@ -138,7 +139,7 @@ Item {
         }
 
         Rectangle {
-            y: 90
+            y: 120
             width: 156; height: 48; radius: 24
             color: Theme.fg
             Row {
@@ -170,7 +171,7 @@ Item {
 
         // name of the current wallpaper, shown while the Wallstore tile is selected
         Txt {
-            y: 176
+            y: 196
             opacity: root.cur && root.cur.isWall === true ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 220 } }
@@ -181,7 +182,7 @@ Item {
         }
 
         InfoCards {
-            y: 176
+            y: 196
             entry: root.cur
             topSum: root.topSum
             opacity: root.cur && (root.cur.isLibrary === true || root.cur.isWall === true) ? 0 : 1
