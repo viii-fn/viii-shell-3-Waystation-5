@@ -59,12 +59,6 @@ Item {
         }
     }
 
-    SequentialAnimation on drift {
-        running: root.shown
-        loops: Animation.Infinite
-        NumberAnimation { to: 70; duration: 16000; easing.type: Easing.InOutSine }
-        NumberAnimation { to: -70; duration: 16000; easing.type: Easing.InOutSine }
-    }
 
     // full-bleed current wallpaper, shown while the Wallstore tile is selected (unloaded otherwise: 2 GB RAM)
     Item {

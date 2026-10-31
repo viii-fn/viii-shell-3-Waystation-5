@@ -1,10 +1,11 @@
 import QtQuick
-import QtQuick.Effects
 import QtQuick.Shapes
 import "../core"
 
-// Home row. The focused tile always sits at the left margin with a fixed focus ring; the row slides
-// underneath it. One animated number (f = focus position) drives every tile's size and position.
+// PS5 home row. The focused tile sits at the left margin; the row slides underneath it. The name
+// sits under the small tiles (right of the focused one), exactly like the PS5; the big name, the
+// Open button and the screen-time cards sit lower left. One animated number (f = focus position)
+// drives every tile's size and position.
 Item {
     id: root
 
@@ -16,15 +17,16 @@ Item {
     property real infoIn: 1
     signal launched(var entry, real x, real y, real w, real h)
 
-    readonly property real small: 92
-    readonly property real sel: 170
-    readonly property real gap: 5
-    readonly property real padL: 72
-    readonly property real cy: 214
+    // geometry in design pixels, measured from the real PS5 home screen scaled to 1366 wide
+    readonly property real small: 80
+    readonly property real sel: 132
+    readonly property real gap: 6
+    readonly property real padL: 104
+    readonly property real rowTop: 108
     readonly property real d: sel - small
-    readonly property real ringCorner: sel * 0.13
 
     readonly property var cur: (entries && entries.length > 0) ? entries[Math.min(current, entries.length - 1)] : null
+    readonly property bool special: cur !== null && (cur.isLibrary === true || cur.isWall === true)
 
     readonly property real topSum: {
         void ScreenTime.revision;
@@ -70,7 +72,7 @@ Item {
         return true;
     }
     function reset() { animateF = false; current = 0; f = current; animateF = true; }
-    function activate() { if (cur) launched(cur, padL, cy - sel / 2, sel, sel); }
+    function activate() { if (cur) launched(cur, padL, rowTop, sel, sel); }
     function subtitle(e) {
         if (!e) return "";
         if (e.isWall === true) return "Wallpapers \u00b7 the whole interface follows the one you pick";
@@ -93,9 +95,10 @@ Item {
             required property int index
             readonly property real w: root.wOf(index)
             readonly property real t: root.stage(index)
+            readonly property real k: root.tent(index)
 
             x: root.xOf(index) + (1 - t) * 454
-            y: root.cy - w / 4 + (1 - t) * 26
+            y: root.rowTop + (1 - k) * 4 + (1 - t) * 26
             width: w
             height: w
             opacity: t * Math.min(1, Math.max(0, 1 - (root.f - index)))
@@ -104,7 +107,7 @@ Item {
             AppTile {
                 anchors.fill: parent
                 entry: cell.modelData
-                dim: 1 - root.tent(cell.index)
+                dim: 1 - cell.k
             }
             MouseArea {
                 anchors.fill: parent
@@ -113,34 +116,49 @@ Item {
         }
     }
 
-    // ---- info under the tile ----
+    // ---- the PS5 label: name under the small tiles, right of the focused tile ----
+    Txt {
+        x: root.padL + root.sel + 10
+        y: root.rowTop + 4 + root.small + 12
+        width: 700
+        text: root.cur ? root.cur.name : ""
+        font.pixelSize: 20
+        font.weight: Font.Medium
+        opacity: root.intro * root.infoIn
+        transform: Translate { x: (1 - root.infoIn) * 18 }
+    }
+
+    // ---- lower left: big name, subtitle, Open pill ----
     Item {
-        id: info
+        id: hero
         x: root.padL
-        y: 290
-        width: 900
+        y: 410
+        width: 760
+        height: 170
         opacity: root.intro * root.infoIn
         transform: Translate { x: (1 - root.infoIn) * 18 }
 
         Txt {
-            id: title
             width: parent.width
-            x: 190
             text: root.cur ? root.cur.name : ""
-            font.pixelSize: 35
+            font.pixelSize: 54
+            font.weight: Font.Bold
         }
         Txt {
-            y: 80
+            y: 74
             width: parent.width
             text: root.subtitle(root.cur)
-            font.pixelSize: 16
+            font.pixelSize: 17
             color: Theme.fgDim
         }
 
+        // dark translucent pill, like the PS5 Play button
         Rectangle {
-            y: 120
-            width: 156; height: 48; radius: 24
-            color: Theme.fg
+            y: 116
+            width: 150; height: 46; radius: 23
+            color: Qt.rgba(0.17, 0.18, 0.21, 0.88)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.10)
             Row {
                 anchors.centerIn: parent
                 spacing: 10
@@ -150,7 +168,7 @@ Item {
                         y: 3
                         ShapePath {
                             strokeWidth: -1
-                            fillColor: Theme.deep
+                            fillColor: Theme.fg
                             startX: 0; startY: 0
                             PathLine { x: 14; y: 8 }
                             PathLine { x: 0; y: 16 }
@@ -159,33 +177,35 @@ Item {
                     }
                 }
                 Txt {
-                    text: root.cur && (root.cur.isLibrary === true || root.cur.isWall === true) ? "Browse" : "Open"
-                    font.pixelSize: 19
-                    font.weight: Font.Bold
-                    color: Theme.deep
+                    text: root.special ? "Browse" : "Open"
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
                 }
             }
             MouseArea { anchors.fill: parent; onClicked: root.activate() }
         }
+    }
 
-        // name of the current wallpaper, shown while the Wallstore tile is selected
-        Txt {
-            y: 196
-            opacity: root.cur && root.cur.isWall === true ? 1 : 0
-            visible: opacity > 0.01
-            Behavior on opacity { NumberAnimation { duration: 220 } }
-            text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
-            font.pixelSize: 12
-            font.letterSpacing: 1.6
-            color: Theme.fgDim
-        }
+    // name of the current wallpaper, shown while the Wallstore tile is selected
+    Txt {
+        x: root.padL
+        y: 596
+        opacity: (root.cur && root.cur.isWall === true) ? root.intro * root.infoIn : 0
+        visible: opacity > 0.01
+        text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
+        font.pixelSize: 12
+        font.letterSpacing: 1.6
+        color: Theme.fgDim
+    }
 
-        InfoCards {
-            y: 196
-            entry: root.cur
-            topSum: root.topSum
-            opacity: root.cur && (root.cur.isLibrary === true || root.cur.isWall === true) ? 0 : 1
-            Behavior on opacity { NumberAnimation { duration: 220 } }
-        }
+    // screen-time cards (the PS5's "Must see" row, per-app screen time instead of trophies)
+    InfoCards {
+        x: root.padL
+        y: 584
+        entry: root.cur
+        topSum: root.topSum
+        opacity: root.special ? 0 : root.intro * root.infoIn
+        visible: opacity > 0.01
+        transform: Translate { x: (1 - root.infoIn) * 18 }
     }
 }

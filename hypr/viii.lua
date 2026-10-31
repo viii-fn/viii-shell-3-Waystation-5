@@ -38,7 +38,6 @@ end)
 for _, ns in ipairs({ "viii-hub", "viii-cc", "viii-osd" }) do
     try("layer no_anim " .. ns, hl.layer_rule, { match = { namespace = ns }, no_anim = true })
 end
-try("layer blur viii-hub", hl.layer_rule, { match = { namespace = "viii-hub" }, blur = true })
 
 ---------------------------------------------------------------------------
 -- PS button. One key, bound twice: on press and on release.

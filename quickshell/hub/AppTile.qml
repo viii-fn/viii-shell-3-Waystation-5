@@ -1,18 +1,19 @@
 import QtQuick
 import "../core"
 
-// One app tile: palette gradient, gloss, icon (or monogram if the icon can't load), optional dimming.
+// One app tile, PS5 style: a dark glass slot with the app icon on it (no colour gradient, no gloss).
 // Used by the home row, the library grid and the launch zoom.
 Item {
     id: root
     property var entry: null
     property real dim: 0                 // 0 = normal, 1 = fully dimmed (unfocused)
-    property real corner: Math.min(width, height) * 0.13
-    property real iconScale: 0.7
+    property real corner: Math.min(width, height) * 0.14
+    property real iconScale: 0.64
     property real iconOpacity: 1
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
     readonly property bool isWall: entry !== null && entry !== undefined && entry.isWall === true
+    readonly property real shade: iconOpacity * (1 - 0.35 * dim)
 
     readonly property var pal: {
         void Apps.palettes;
@@ -26,26 +27,13 @@ Item {
         return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
+    // the slot: one flat rounded rectangle
     Rectangle {
         anchors.fill: parent
         radius: root.corner
+        color: Qt.rgba(0.055, 0.06, 0.075, 0.92 - 0.30 * root.dim)
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.10)
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.tint(root.pal.primaryContainer, Qt.alpha(root.pal.primary, 0.40)) }
-            GradientStop { position: 1.0; color: Qt.darker(root.pal.surface, 5.15) }
-        }
-    }
-
-    // soft top gloss
-    Rectangle {
-        anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: parent.height * 0.55
-        radius: root.corner
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.17) }
-            GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.0) }
-        }
+        border.color: Qt.rgba(1, 1, 1, 0.09)
     }
 
     Image {
@@ -54,11 +42,11 @@ Item {
         width: Math.min(root.width, root.height) * root.iconScale
         height: width
         source: root.src
-        sourceSize: Qt.size(168, 168)
+        sourceSize: Qt.size(128, 128)
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         smooth: true
-        opacity: root.iconOpacity
+        opacity: root.shade
         visible: status === Image.Ready
         onStatusChanged: if (status === Image.Error) console.warn("[viii] icon failed:", root.entry ? root.entry.name : "?", root.src)
     }
@@ -67,7 +55,7 @@ Item {
     Txt {
         anchors.centerIn: parent
         visible: !root.isLib && !root.isWall && img.status !== Image.Ready
-        opacity: root.iconOpacity
+        opacity: root.shade
         text: root.entry && root.entry.name ? String(root.entry.name).charAt(0).toUpperCase() : "?"
         font.pixelSize: Math.min(root.width, root.height) * 0.46
         font.weight: Font.DemiBold
@@ -78,7 +66,7 @@ Item {
     Grid {
         anchors.centerIn: parent
         visible: root.isLib
-        opacity: root.iconOpacity
+        opacity: root.shade
         columns: 2
         spacing: Math.min(root.width, root.height) * 0.06
         Repeater {
@@ -98,7 +86,7 @@ Item {
     Item {
         anchors.centerIn: parent
         visible: root.isWall
-        opacity: root.iconOpacity
+        opacity: root.shade
         width: Math.min(root.width, root.height) * 0.50
         height: width * 0.74
         Rectangle {
@@ -112,12 +100,5 @@ Item {
             Rectangle { x: parent.width * 0.06; y: parent.height * 0.52; width: parent.width * 0.46; height: width; rotation: 45; radius: width * 0.08; color: Theme.fg; opacity: 0.85 }
             Rectangle { x: parent.width * 0.38; y: parent.height * 0.62; width: parent.width * 0.40; height: width; rotation: 45; radius: width * 0.08; color: Theme.fg; opacity: 0.65 }
         }
-    }
-
-    // dim overlay for unfocused tiles
-    Rectangle {
-        anchors.fill: parent
-        radius: root.corner
-        color: Qt.rgba(0, 0, 0, 0.40 * root.dim)
     }
 }
