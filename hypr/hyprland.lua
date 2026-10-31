@@ -15,12 +15,21 @@ if not ok then
 end
 
 ---------------
+---- CURSOR ---
+---------------
+
+hl.env("HYPRCURSOR_THEME", "default")
+hl.env("HYPRCURSOR_SIZE", "24")
+hl.env("XCURSOR_THEME", "default")
+hl.env("XCURSOR_SIZE", "24")
+
+---------------
 ---- INPUT ----
 ---------------
 
 hl.config({
     input = {
-        kb_layout  = "gb",   -- was "us"
+        kb_layout  = "gb",    -- was "us"
         kb_variant = "",
         kb_model   = "",
         kb_options = "",
