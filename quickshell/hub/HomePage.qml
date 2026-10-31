@@ -127,7 +127,7 @@ Item {
             width: parent.width
             x: 190
             text: root.cur ? root.cur.name : ""
-            font.pixelSize: 40
+            font.pixelSize: 35
             font.weight: Font.Light
         }
         Txt {
