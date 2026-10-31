@@ -99,7 +99,7 @@ Item {
         ];
         case 2: return [
             { title: "Output volume", desc: "Adjust the default audio output level", action: "volume", kind: "slider" },
-            { title: "Mute audio", desc: "Mute or unmute the default output", action: "mute", kind: "toggle" },
+            { title: "Audio", desc: "Mute or unmute the default output", action: "mute", kind: "toggle" },
             { title: "Output device", desc: "Current default PipeWire output", action: "audio-output", kind: "info" }
         ];
         case 3: return [

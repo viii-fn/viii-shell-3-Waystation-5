@@ -262,7 +262,7 @@ FocusScope {
         }
         case 2: return [
             { title: "Output volume", desc: "Adjust the default audio output level", action: "volume", kind: "slider" },
-            { title: "Mute audio", desc: "Mute or unmute the default output", action: "mute", kind: "toggle" },
+            { title: "Audio", desc: "Mute or unmute the default output", action: "mute", kind: "toggle" },
             { title: "Output device", desc: "Choose the active PipeWire output", action: "audio-output", kind: "cycle" },
             { title: "Input device", desc: "Choose the active PipeWire microphone", action: "audio-input", kind: "cycle" }
         ];
