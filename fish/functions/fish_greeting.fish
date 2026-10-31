@@ -1,3 +1,3 @@
 function fish_greeting
-    cowsay i use arch btw
+    cowsay This ain\'t windows btw
 end
