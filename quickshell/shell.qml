@@ -5,6 +5,7 @@ import "core"
 import "hub"
 import "cc"
 import "wall"
+import "notif"
 
 // viii-shell-3 entry point. Run with:  qs -c viii   (or: viii start)
 ShellRoot {
@@ -42,6 +43,15 @@ ShellRoot {
     Variants {
         model: Quickshell.screens
         Osd {
+            required property var modelData
+            screen: modelData
+        }
+    }
+
+    // Notifications: this shell is the notification daemon (core/Notifs.qml). Toasts and charger events pop up top-centre.
+    Variants {
+        model: Quickshell.screens
+        NotifPopup {
             required property var modelData
             screen: modelData
         }

@@ -5,3 +5,4 @@ singleton Apps 1.0 Apps.qml
 singleton Desk 1.0 Desk.qml
 ThemeDriver 1.0 ThemeDriver.qml
 singleton Wall 1.0 Wall.qml
+singleton Notifs 1.0 Notifs.qml
