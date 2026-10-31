@@ -48,6 +48,7 @@ Singleton {
     }
 
     function paletteFor(entry) {
+        if (entry.isWall === true) return Theme.wp || fallback("wall");
         if (entry.isLibrary === true) return fallback("library");
         const k = safeKey(entry);
         return palettes[k] || fallback(k);
@@ -55,7 +56,7 @@ Singleton {
 
     // Ask for a palette (queued, one matugen run at a time, low priority).
     function request(entry) {
-        if (entry.isLibrary === true) return;
+        if (entry.isLibrary === true || entry.isWall === true) return;
         const k = safeKey(entry);
         if (palettes[k] || failed[k] || busyKey === k || queue.some(q => q.key === k)) return;
         queue.push({ key: k, icon: iconPath(entry) });

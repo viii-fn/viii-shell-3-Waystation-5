@@ -1,0 +1,6 @@
+# Shell colours only (what the Hub/Control Center/OSD read). Used by: viii-theme --shell-only
+[config]
+
+[templates.shell]
+input_path = '~/viii-shell-3/matugen/templates/theme.json'
+output_path = '~/.cache/viii/theme.json'

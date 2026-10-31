@@ -12,9 +12,9 @@ Row {
         height: 24
         width: Math.max(24, kt.width + 16)
         radius: 7
-        color: Qt.rgba(1, 1, 1, 0.14)
+        color: Theme.glassHi
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.20)
+        border.color: Theme.glassBorder
         Txt { id: kt; anchors.centerIn: parent; text: root.key; font.pixelSize: 12; font.weight: Font.DemiBold }
     }
     Txt { y: (24 - height) / 2; text: root.label; font.pixelSize: 14; color: Theme.fgDim }

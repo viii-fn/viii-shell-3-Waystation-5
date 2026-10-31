@@ -93,8 +93,8 @@ Item {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: parent.height * 0.5
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.0) }
-            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.55) }
+            GradientStop { position: 0.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.0) }
+            GradientStop { position: 1.0; color: Qt.alpha(Theme.deep, 0.7) }
         }
     }
 }

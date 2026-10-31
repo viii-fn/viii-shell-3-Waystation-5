@@ -48,14 +48,14 @@ PanelWindow {
     readonly property var sel: page === 1 ? lib.cur : home.cur
 
     function iconUrl(entry) {
-        if (!entry || entry.isLibrary === true) return "";
+        if (!entry || entry.isLibrary === true || entry.isWall === true) return "";
         const p = Apps.iconPath(entry);
         if (!p) return "";
         return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
     function rebuild() {
-        home.entries = Apps.ranked(16).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }].concat(Apps.ranked(16)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
         home.reset();
         lib.entries = Apps.alphabetical();
         lib.reset();
@@ -92,6 +92,7 @@ PanelWindow {
             root.forceActiveFocus();
             tint();
         } else {
+            Theme.applyWallpaper();
             resetTimer.restart();
         }
     }
@@ -127,14 +128,18 @@ PanelWindow {
     Timer {
         id: resetTimer
         interval: Motion.hide + 80
-        onTriggered: { fx.reset(); win.launching = false; launchTimer.stop(); abortTimer.stop(); }
+        onTriggered: { win.storeOpen = false; fx.reset(); win.launching = false; launchTimer.stop(); abortTimer.stop(); }
     }
     Timer { id: launchTimer; interval: 700; onTriggered: Desk.summoned = false }
     Timer { id: abortTimer; interval: 2800; onTriggered: { if (win.shown) fx.abort(); win.launching = false; } }
 
+    property bool storeOpen: false
+    function openStore() { storeOpen = true; Theme.applyWallpaper(); }
+
     // ---- actions ----
     function launch(entry, x, y, w, h) {
         if (launching || !entry) return;
+        if (entry.isWall === true) { openStore(); return; }
         if (entry.isLibrary === true) { page = 1; tabsFocus = false; return; }
         launching = true;
         fx.start(entry, x, y, w, h);
@@ -165,6 +170,7 @@ PanelWindow {
     }
 
     function handleKey(e) {
+        if (storeOpen) { store.handleKey(e); return; }
         if (launching) { e.accepted = true; return; }
         let handled = true;
         switch (e.key) {
@@ -243,6 +249,13 @@ PanelWindow {
                 Hint { key: "Enter"; label: win.page === 0 && win.sel && win.sel.isLibrary === true ? "Browse" : "Open" }
                 Hint { key: "Tab"; label: "Switch" }
                 Hint { key: "Esc"; label: "Back" }
+            }
+
+            WallstorePage {
+                id: store
+                anchors.fill: parent
+                open: win.storeOpen
+                onCloseRequested: win.storeOpen = false
             }
 
             LaunchFx {

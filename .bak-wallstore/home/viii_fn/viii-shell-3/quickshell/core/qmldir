@@ -1,0 +1,8 @@
+singleton Motion 1.0 Motion.qml
+singleton Theme 1.0 Theme.qml
+singleton ScreenTime 1.0 ScreenTime.qml
+singleton Apps 1.0 Apps.qml
+singleton Desk 1.0 Desk.qml
+ThemeDriver 1.0 ThemeDriver.qml
+ThemeDriver 1.0 ThemeDriver.qml
+singleton Wall 1.0 Wall.qml

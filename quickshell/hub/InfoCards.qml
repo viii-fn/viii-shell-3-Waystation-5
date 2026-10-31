@@ -24,9 +24,9 @@ Row {
         property string label: ""
         height: 124
         radius: 18
-        color: Qt.rgba(1, 1, 1, 0.07)
+        color: Theme.glass
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.11)
+        border.color: Theme.glass
         Txt {
             x: 20; y: 16
             text: parent.label
@@ -67,7 +67,7 @@ Row {
                         height: 4 + (parent.v / root.maxDay) * 54
                         y: 66 - height
                         radius: 5
-                        color: parent.index === 6 ? Theme.accent : Qt.rgba(1, 1, 1, 0.26)
+                        color: parent.index === 6 ? Theme.accent : Theme.glassBorder
                         Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
                     }
                     Txt {
@@ -86,7 +86,7 @@ Row {
         width: 290
         label: "VS MOST USED"
         Txt { x: 20; y: 42; text: root.pct + "%"; font.pixelSize: 38; font.weight: Font.Bold }
-        Rectangle { x: 20; y: 98; width: parent.width - 40; height: 6; radius: 3; color: Qt.rgba(1, 1, 1, 0.12)
+        Rectangle { x: 20; y: 98; width: parent.width - 40; height: 6; radius: 3; color: Theme.glass
             Rectangle {
                 height: parent.height
                 radius: 3

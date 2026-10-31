@@ -48,9 +48,9 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: width / 2
-            color: root.selected ? Theme.fg : Qt.rgba(1, 1, 1, 0.16)
+            color: root.selected ? Theme.fg : Theme.glassHi
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.22)
+            border.color: Theme.glassBorder
             Behavior on color { ColorAnimation { duration: 180 } }
         }
         Txt {
@@ -59,7 +59,7 @@ Item {
             font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
             font.pixelSize: root.nfFamily !== "" ? 32 : 18
             font.weight: Font.Bold
-            color: root.selected ? "#101218" : Theme.fg
+            color: root.selected ? Theme.deep : Theme.fg
             opacity: root.lit ? 1 : 0.45
         }
     }

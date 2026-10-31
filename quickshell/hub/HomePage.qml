@@ -69,10 +69,11 @@ Item {
         current = n;
         return true;
     }
-    function reset() { animateF = false; current = 0; f = 0; animateF = true; }
+    function reset() { animateF = false; current = (entries.length > 1 && entries[0].isWall === true) ? 1 : 0; f = current; animateF = true; }
     function activate() { if (cur) launched(cur, padL, cy - sel / 2, sel, sel); }
     function subtitle(e) {
         if (!e) return "";
+        if (e.isWall === true) return "Wallpapers \u00b7 the whole interface follows the one you pick";
         if (e.isLibrary === true) return "Browse every installed app";
         return e.comment || e.genericName || "Application";
     }
@@ -172,7 +173,7 @@ Item {
                         y: 3
                         ShapePath {
                             strokeWidth: -1
-                            fillColor: "#0b0d12"
+                            fillColor: Theme.deep
                             startX: 0; startY: 0
                             PathLine { x: 14; y: 8 }
                             PathLine { x: 0; y: 16 }
@@ -181,20 +182,46 @@ Item {
                     }
                 }
                 Txt {
-                    text: root.cur && root.cur.isLibrary === true ? "Browse" : "Open"
+                    text: root.cur && (root.cur.isLibrary === true || root.cur.isWall === true) ? "Browse" : "Open"
                     font.pixelSize: 19
                     font.weight: Font.Bold
-                    color: "#0b0d12"
+                    color: Theme.deep
                 }
             }
             MouseArea { anchors.fill: parent; onClicked: root.activate() }
+        }
+
+        // current wallpaper, shown while the Wallstore tile is selected
+        Item {
+            x: 640; y: 0
+            width: 540; height: 304
+            opacity: root.cur && root.cur.isWall === true ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 220 } }
+            Rectangle { anchors.fill: parent; radius: 18; color: Theme.glass; border.width: 1; border.color: Theme.glassBorder }
+            Image {
+                anchors.fill: parent
+                anchors.margins: 6
+                source: Wall.src(Wall.current)
+                sourceSize.width: 640
+                fillMode: Image.PreserveAspectCrop
+                clip: true
+                asynchronous: true
+            }
+            Txt {
+                x: 6; y: parent.height + 10
+                text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
+                font.pixelSize: 11
+                font.letterSpacing: 1.6
+                color: Theme.fgDim
+            }
         }
 
         InfoCards {
             y: 176
             entry: root.cur
             topSum: root.topSum
-            opacity: root.cur && root.cur.isLibrary === true ? 0 : 1
+            opacity: root.cur && (root.cur.isLibrary === true || root.cur.isWall === true) ? 0 : 1
             Behavior on opacity { NumberAnimation { duration: 220 } }
         }
     }

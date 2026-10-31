@@ -31,7 +31,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: 21
-                    color: Qt.rgba(1, 1, 1, 0.16)
+                    color: Theme.glassHi
                     opacity: (tab.cur && root.tabsFocus) ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
@@ -77,7 +77,7 @@ Item {
                 radius: 4
                 color: "transparent"
                 border.width: 1.5
-                border.color: Qt.rgba(1, 1, 1, 0.85)
+                border.color: Theme.fg
                 Rectangle {
                     x: 3; y: 3
                     height: parent.height - 6
@@ -86,7 +86,7 @@ Item {
                     color: parent.parent.pct < 0.15 ? "#ff6b6b" : Theme.fg
                 }
             }
-            Rectangle { x: 29.5; y: 17.5; width: 3; height: 7; radius: 1.5; color: Qt.rgba(1, 1, 1, 0.85) }
+            Rectangle { x: 29.5; y: 17.5; width: 3; height: 7; radius: 1.5; color: Theme.fg }
             Txt { x: 40; y: (42 - height) / 2; text: Math.round(Math.max(0, parent.pct) * 100) + "%"; font.pixelSize: 16 }
         }
 
@@ -106,7 +106,7 @@ Item {
                 GradientStop { position: 1.0; color: Qt.darker(Theme.accent, 1.8) }
             }
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.25)
+            border.color: Theme.glassBorder
             Txt {
                 anchors.centerIn: parent
                 text: (Quickshell.env("USER") || "u").charAt(0).toUpperCase()

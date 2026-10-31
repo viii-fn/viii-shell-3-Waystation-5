@@ -134,7 +134,7 @@ Item {
             width: parent.width
             height: 10
             radius: 5
-            color: Qt.rgba(1, 1, 1, 0.18)
+            color: Theme.glassHi
             Rectangle {
                 width: parent.width * Math.max(0, Math.min(1, sc.frac))
                 height: parent.height
@@ -176,9 +176,9 @@ Item {
         x: (root.width - width) / 2
         y: 270 + (1 - root.vis) * 30
         radius: 28
-        color: Qt.rgba(1, 1, 1, 0.10)
+        color: Theme.glass
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.16)
+        border.color: Theme.glassHi
         opacity: root.vis
         MouseArea { anchors.fill: parent }
 
@@ -273,7 +273,7 @@ Item {
                                 text: parent.modelData.n
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
-                                color: parent.cur ? "#101218" : Theme.fg
+                                color: parent.cur ? Theme.deep : Theme.fg
                             }
                             Txt {
                                 anchors.right: parent.right
@@ -282,7 +282,7 @@ Item {
                                 visible: root.armed === parent.modelData.n
                                 text: "Press Enter again"
                                 font.pixelSize: 14
-                                color: "#101218"
+                                color: Theme.deep
                             }
                             MouseArea {
                                 anchors.fill: parent

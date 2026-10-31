@@ -97,9 +97,9 @@ PanelWindow {
         y: 4 + (1 - win.vis) * 14
         radius: 28
         opacity: win.vis
-        color: Qt.rgba(0.07, 0.07, 0.09, 0.90)
+        color: Qt.alpha(Theme.deep, 0.92)
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.16)
+        border.color: Theme.glassHi
 
         Txt {
             x: 22
@@ -114,7 +114,7 @@ PanelWindow {
             width: 110
             height: 8
             radius: 4
-            color: Qt.rgba(1, 1, 1, 0.18)
+            color: Theme.glassHi
             Rectangle {
                 width: win.muted ? 0 : parent.width * Math.max(0, Math.min(1, win.value / 100))
                 height: parent.height

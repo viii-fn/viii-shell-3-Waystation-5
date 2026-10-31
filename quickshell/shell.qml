@@ -4,11 +4,21 @@ import Quickshell.Hyprland
 import "core"
 import "hub"
 import "cc"
+import "wall"
 
 // viii-shell-3 entry point. Run with:  qs -c viii   (or: viii start)
 ShellRoot {
     // exactly one ThemeDriver (it glides the Theme colours)
     ThemeDriver {}
+
+    // the wallpaper (drawn here, so it always matches the palette)
+    Variants {
+        model: Quickshell.screens
+        WallpaperLayer {
+            required property var modelData
+            screen: modelData
+        }
+    }
 
     // one hub window per monitor
     Variants {

@@ -1,0 +1,6 @@
+{
+  "primary": "{{colors.primary.default.hex}}",
+  "onPrimary": "{{colors.on_primary.default.hex}}",
+  "primaryContainer": "{{colors.primary_container.default.hex}}",
+  "surface": "{{colors.surface.default.hex}}"
+}
