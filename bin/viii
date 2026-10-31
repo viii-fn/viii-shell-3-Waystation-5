@@ -1,16 +1,47 @@
 #!/usr/bin/env bash
 # viii: tiny control script for viii-shell-3
+# Instances are matched by their command line: "qs -c viii" or "quickshell -c viii".
+PAT='(^|/)(qs|quickshell)( .*)? -c viii( |$)'
+
+count() { pgrep -fc "$PAT" 2>/dev/null || true; }
+
+# Kill EVERY running instance, wait until they are gone, then force-kill leftovers.
+stop_all() {
+  qs kill -c viii >/dev/null 2>&1
+  pkill -f "$PAT" >/dev/null 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    [ "$(count)" = "0" ] && return 0
+    sleep 0.25
+  done
+  pkill -9 -f "$PAT" >/dev/null 2>&1
+  sleep 0.3
+}
+
 case "${1:-}" in
-  start)        qs kill -c viii 2>/dev/null; exec qs -c viii -d ;;
-  stop|kill)    exec qs kill -c viii ;;
-  restart)      qs kill -c viii 2>/dev/null; sleep 0.3; exec qs -c viii -d ;;
+  start)        stop_all; exec qs -c viii -d ;;
+  stop|kill)    stop_all; echo "stopped (instances left: $(count))" ;;
+  restart)      stop_all; exec qs -c viii -d ;;
   log)          exec qs log -c viii ;;
   doctor)
+    n="$(count)"
+    echo "== running shell instances (want: 1)"
+    echo "  $n"
+    [ "$n" -gt 1 ] 2>/dev/null && echo "  WARNING: duplicates. Run: viii restart"
+    echo
     echo "== shortcuts the shell registered with Hyprland (want: psDown, psUp, launcher, briUp, briDown)"
     hyprctl globalshortcuts 2>&1 | grep -i 'shell' || echo "  none found: is the shell running? (viii start)"
     echo
-    echo "== PS-button binds known to Hyprland (want two lines: press and release)"
-    hyprctl binds 2>&1 | grep -iE 'psDown|psUp' || echo "  none found: the bind from hypr/hyprland/viii.lua is not active"
+    echo "== PS-button binds (hyprctl binds hides the global's name, so check the config + registration)"
+    if grep -q 'shell:psDown' "$HOME/.config/hypr/viii.lua" 2>/dev/null && grep -q 'shell:psUp' "$HOME/.config/hypr/viii.lua" 2>/dev/null; then
+      echo "  ok: press and release binds are in hypr/viii.lua"
+    else
+      echo "  MISSING: shell:psDown / shell:psUp not found in ~/.config/hypr/viii.lua"
+    fi
+    if hyprctl globalshortcuts 2>&1 | grep -q 'psDown' && hyprctl globalshortcuts 2>&1 | grep -q 'psUp'; then
+      echo "  ok: shell registered psDown and psUp"
+    else
+      echo "  WARNING: shell has not registered psDown/psUp (is it running?)"
+    fi
     echo
     echo "== Hyprland config errors"
     hyprctl configerrors 2>&1

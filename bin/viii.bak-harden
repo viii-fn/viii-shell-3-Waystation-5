@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# viii: tiny control script for viii-shell-3
+case "${1:-}" in
+  start)        qs kill -c viii 2>/dev/null; exec qs -c viii -d ;;
+  stop|kill)    exec qs kill -c viii ;;
+  restart)      qs kill -c viii 2>/dev/null; sleep 0.3; exec qs -c viii -d ;;
+  log)          exec qs log -c viii ;;
+  doctor)
+    echo "== shortcuts the shell registered with Hyprland (want: psDown, psUp, launcher, briUp, briDown)"
+    hyprctl globalshortcuts 2>&1 | grep -i 'shell' || echo "  none found: is the shell running? (viii start)"
+    echo
+    echo "== PS-button binds known to Hyprland (want two lines: press and release)"
+    hyprctl binds 2>&1 | grep -iE 'psDown|psUp' || echo "  none found: the bind from hypr/hyprland/viii.lua is not active"
+    echo
+    echo "== Hyprland config errors"
+    hyprctl configerrors 2>&1
+    echo
+    echo "== hypr lua log (empty = fine)"
+    cat "$HOME/.cache/viii/hypr-lua.log" 2>/dev/null || echo "  no log"
+    ;;
+  *)            echo "usage: viii start | stop | restart | log | doctor" ;;
+esac
