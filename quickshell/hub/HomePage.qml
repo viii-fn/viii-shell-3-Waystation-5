@@ -16,9 +16,9 @@ Item {
     property real infoIn: 1
     signal launched(var entry, real x, real y, real w, real h)
 
-    readonly property real small: 132
-    readonly property real sel: 212
-    readonly property real gap: 18
+    readonly property real small: 92
+    readonly property real sel: 170
+    readonly property real gap: 5
     readonly property real padL: 72
     readonly property real cy: 214
     readonly property real d: sel - small
@@ -85,18 +85,6 @@ Item {
         easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out
     }
 
-    // glow under the focused tile (declared before the tiles so it sits behind them)
-    RectangularShadow {
-        x: root.padL; y: root.cy - root.sel / 2
-        width: root.sel; height: root.sel
-        radius: root.ringCorner
-        blur: 46
-        spread: 4
-        offset: Qt.vector2d(0, 18)
-        color: Qt.alpha(Theme.accent, 0.55)
-        opacity: root.intro
-    }
-
     Repeater {
         model: root.entries
         delegate: Item {
@@ -106,7 +94,7 @@ Item {
             readonly property real w: root.wOf(index)
             readonly property real t: root.stage(index)
 
-            x: root.xOf(index) + (1 - t) * 44
+            x: root.xOf(index) + (1 - t) * 454
             y: root.cy - w / 2 + (1 - t) * 26
             width: w
             height: w
@@ -123,17 +111,6 @@ Item {
                 onClicked: { if (cell.index === root.current) root.activate(); else root.current = cell.index; }
             }
         }
-    }
-
-    // focus ring: white outline with a gap, fixed at the left margin
-    Rectangle {
-        x: root.padL - 7; y: root.cy - root.sel / 2 - 7
-        width: root.sel + 14; height: root.sel + 14
-        radius: root.ringCorner + 7
-        color: "transparent"
-        border.width: 3
-        border.color: Theme.fg
-        opacity: root.intro
     }
 
     // ---- info under the tile ----
