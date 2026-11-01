@@ -6,6 +6,7 @@ import "hub"
 import "cc"
 import "wall"
 import "notif"
+import "shot"
 
 // viii-shell-3 entry point. Run with:  qs -c viii   (or: viii start)
 ShellRoot {
@@ -57,6 +58,15 @@ ShellRoot {
         }
     }
 
+    // Screenshot pane (Print key): one window per monitor, hidden until the key is pressed.
+    Variants {
+        model: Quickshell.screens
+        ShotPane {
+            required property var modelData
+            screen: modelData
+        }
+    }
+
     // Hyprland global shortcuts, app id "shell". These are the same names the old shell answered to,
     // so your existing binds (SUPER+Return, brightness keys, ...) keep working unchanged.
     GlobalShortcut {
@@ -72,6 +82,10 @@ ShellRoot {
     GlobalShortcut {
         appid: "shell"; name: "ward"; description: "Open notification history"
         onPressed: Desk.openHistory()
+    }
+    GlobalShortcut {
+        appid: "shell"; name: "shot"; description: "Screenshot pane"
+        onPressed: Desk.openShot()
     }
     GlobalShortcut {
         appid: "shell"; name: "psDown"; description: "PS button pressed"

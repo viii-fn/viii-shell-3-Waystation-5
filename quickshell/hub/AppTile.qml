@@ -13,7 +13,7 @@ Item {
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
     readonly property bool isWall: entry !== null && entry !== undefined && entry.isWall === true
-    readonly property real shade: iconOpacity * (1 - 0.35 * dim)
+    readonly property real shade: iconOpacity * (1 - 0.10 * dim)
 
     readonly property var pal: {
         void Apps.palettes;
@@ -31,7 +31,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.corner
-        color: Qt.rgba(0.055, 0.06, 0.075, 0.92 - 0.30 * root.dim)
+        color: Qt.rgba(0.055, 0.06, 0.075, 0.92 - 0.08 * root.dim)
         border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.09)
     }
