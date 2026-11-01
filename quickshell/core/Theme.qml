@@ -39,12 +39,17 @@ Singleton {
     readonly property color glassHi: Qt.alpha(Qt.lighter(accent, 1.5), 0.20)
     readonly property color glassBorder: Qt.alpha(Qt.lighter(accent, 1.5), 0.28)
 
+    // a light container (monochrome scheme) must not turn the hub background grey: cap the lightness
+    function capL(c, maxL) {
+        return c.hslLightness <= maxL ? c : Qt.hsla(Math.max(0, c.hslHue), c.hslSaturation, maxL, 1);
+    }
+
     // p = { primary, onPrimary, primaryContainer, surface } (see Apps.parse)
     function applyPalette(p) {
         tgtAccent = p.primary;
         tgtOn = p.onPrimary;
-        tgtMid = Qt.darker(p.primaryContainer, 1.35);
-        tgtDeep = Qt.darker(p.surface, 1.5);
+        tgtMid = capL(Qt.darker(p.primaryContainer, 1.35), 0.22);
+        tgtDeep = capL(Qt.darker(p.surface, 1.5), 0.08);
     }
 
     // ---- wallpaper palette ----

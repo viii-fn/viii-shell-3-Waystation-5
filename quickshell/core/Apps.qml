@@ -36,14 +36,12 @@ Singleton {
     }
 
     function fallback(key) {
-        let h = 0;
-        for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
-        const hue = h / 360;
+        // plain black and white until (or unless) a real palette arrives; it used to be a hue made up from the app name
         return {
-            primary: Qt.hsla(hue, 0.70, 0.70, 1),
-            onPrimary: Qt.hsla(hue, 0.50, 0.12, 1),
-            primaryContainer: Qt.hsla(hue, 0.45, 0.28, 1),
-            surface: Qt.hsla(hue, 0.30, 0.10, 1)
+            primary: "#f2f2f2",
+            onPrimary: "#161616",
+            primaryContainer: "#2c2c2c",
+            surface: "#0f0f0f"
         };
     }
 
@@ -79,6 +77,7 @@ Singleton {
             next[busyKey] = p;
             palettes = next;
         } else {
+            console.warn("[viii] palette failed for", busyKey, "output:", String(text).slice(0, 160));
             failed[busyKey] = true;
         }
         busyKey = "";

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# viii-palette <icon-file> <key>
+# Icon -> 256px PNG -> matugen -> JSON on stdout. The result is cached per key, so each app costs one run, ever.
+set -u
+icon="${1:?icon path}"; key="${2:?cache key}"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/viii/palettes"
+out="$cache/$key.json"
+mkdir -p "$cache"
+
+if [[ -s "$out" ]]; then cat "$out"; exit 0; fi
+
+tmp="$(mktemp --suffix=.png)"
+trap 'rm -f "$tmp"' EXIT
+
+case "$icon" in
+  *.svg|*.svgz) resvg -w 256 -h 256 "$icon" "$tmp" 2>/dev/null ;;
+  *)            magick "$icon" -background none -resize 256x256 "$tmp" 2>/dev/null ;;
+esac
+[[ -s "$tmp" ]] || exit 1
+
+# Icons are mostly transparent; flatten onto neutral grey so empty pixels don't read as black.
+magick "$tmp" -background '#777777' -alpha remove -alpha off "$tmp" 2>/dev/null
+
+json="$(matugen image "$tmp" --dry-run --json hex --mode dark --prefer saturation 2>>"$cache/.err")" || exit 1
+[[ "$json" == *"{"* ]] || exit 1
+
+printf '%s' "$json" > "$out.tmp" && mv "$out.tmp" "$out"
+printf '%s' "$json"

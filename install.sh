@@ -26,6 +26,7 @@ mkdir -p "$HOME/.local/state/viii" "$HOME/.cache/viii/palettes"
 link "$proj/quickshell"       "$HOME/.config/quickshell/viii"
 link "$proj/bin/viii"         "$HOME/.local/bin/viii"
 link "$proj/bin/viii-palette" "$HOME/.local/bin/viii-palette"
+link "$proj/bin/viii-theme"   "$HOME/.local/bin/viii-theme"
 
 missing=()
 for c in quickshell matugen resvg magick hyprctl brightnessctl nmcli hyprlock; do

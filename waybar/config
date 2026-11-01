@@ -54,11 +54,11 @@
         "tooltip": false,
         "on-click": "playerctl play-pause"
     },
-    
+
     // Shows "Artist - Title", or the fallback text if nothing is playing.
     // The sed removes a leading " - " when a track has no artist tag.
     "custom/media-title": {
-        "exec": "t=$(playerctl metadata --format '{{title}}' 2>/dev/null | sed 's/^ - //'); [ -n \"$t\" ] && echo \"$t\" || echo \"it's quiet here\"",
+        "exec": "t=$(playerctl metadata --format '{{title}}' 2>/dev/null | sed 's/^ - //'); [ -n \"$t\" ] && echo \"$t\" || echo \"It's quiet here\"",
         "interval": 2,
         "format": "{}",
         "escape": true,          // stops titles containing & from breaking the bar

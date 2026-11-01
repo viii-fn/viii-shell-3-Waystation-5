@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# viii-neutral <image>
+# Prints "neutral" when the picture is (almost) black / white / grey, otherwise its dominant colour as #rrggbb.
+# Why this exists: matugen's default scheme (tonal-spot) gives a grey source an arbitrary hue (a black-and-white
+# icon came out green, pink or teal). So grey pictures get a real black/white palette, and coloured ones are
+# reduced to one dominant colour first, so the theme follows what you actually see.
+set -u
+img="${1:?image}"
+im=magick
+command -v magick >/dev/null 2>&1 || im=convert
+"$im" "$img" -alpha on -background none -resize 64x64 -depth 8 txt:- 2>/dev/null | awk -F'[(),]' '
+  /^#/ { next }
+  {
+    r = $3 + 0; g = $4 + 0; b = $5 + 0
+    a = ($6 ~ /^[ ]*[0-9]+[ ]*$/) ? $6 + 0 : 255
+    if (a < 128) next                      # transparent pixels do not count
+    n++
+    mx = r; if (g > mx) mx = g; if (b > mx) mx = b
+    mn = r; if (g < mn) mn = g; if (b < mn) mn = b
+    if (mx == 0) next
+    s = (mx - mn) / mx; v = mx / 255
+    if (s < 0.30 || v < 0.25) next         # grey, white, black or very dark: not a colour
+    d = mx - mn
+    if (mx == r) h = (g - b) / d; else if (mx == g) h = 2 + (b - r) / d; else h = 4 + (r - g) / d
+    h = h * 60; if (h < 0) h += 360
+    bin = int(h / 30) % 12
+    w = s * v
+    cnt++
+    W[bin] += w; R[bin] += r * w; G[bin] += g * w; B[bin] += b * w
+  }
+  END {
+    if (n == 0 || cnt / n < 0.05) { print "neutral"; exit }
+    best = 0; bw = -1
+    for (i = 0; i < 12; i++) if (W[i] > bw) { bw = W[i]; best = i }
+    printf "#%02x%02x%02x\n", int(R[best] / W[best]), int(G[best] / W[best]), int(B[best] / W[best])
+  }'
