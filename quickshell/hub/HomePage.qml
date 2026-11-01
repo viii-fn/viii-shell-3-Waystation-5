@@ -122,8 +122,8 @@ Item {
         y: root.rowTop + 4 + root.small + 12
         width: 700
         text: root.cur ? root.cur.name : ""
-        font.pixelSize: 20
-        font.weight: Font.Medium
+        font.pixelSize: 30
+        font.weight: Font.Light
         opacity: root.intro * root.infoIn
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }
