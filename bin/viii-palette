@@ -1,37 +1,366 @@
-#!/usr/bin/env bash
-# viii-palette <icon-file> <key>
-# Icon -> 256px PNG -> dominant colour -> matugen -> JSON on stdout. The result is cached per key, so each app costs one run, ever.
-#  - a black/white/grey icon (Zed, terminals...) gets a plain black-and-white palette, no matugen involved:
-#    matugen invents a hue for a grey source, which is how a black-and-white icon ended up green
-#  - a coloured icon is reduced to its dominant colour first, and matugen builds the palette from exactly that colour
-set -u
-icon="${1:?icon path}"; key="${2:?cache key}"
-cache="${XDG_CACHE_HOME:-$HOME/.cache}/viii/palettes"
-out="$cache/$key.json"
-neutral="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/viii-neutral"
-mkdir -p "$cache"
+#!/usr/bin/env python3
+# viii-palette (python)
+# usage: viii-palette <icon-file> <cache-key>      -> prints matugen-style JSON (cached per key)
+#        viii-palette --selftest                   -> runs on a dozen installed apps and prints what it decides
+import colorsys, json, os, shutil, subprocess, sys, tempfile, time
 
-if [[ -s "$out" ]]; then cat "$out"; exit 0; fi
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "viii", "palettes")
+LOG = os.path.join(CACHE, ".log")
+NEUTRAL = {"primary": "#f2f2f2", "on_primary": "#161616", "primary_container": "#2c2c2c", "surface": "#0f0f0f"}
+KEYS = ("primary", "on_primary", "primary_container", "surface")
+IM = shutil.which("magick") or shutil.which("convert")
 
-tmp="$(mktemp --suffix=.png)"; solid="$(mktemp --suffix=.png)"
-trap 'rm -f "$tmp" "$solid"' EXIT
 
-case "$icon" in
-  *.svg|*.svgz) resvg -w 256 -h 256 "$icon" "$tmp" 2>/dev/null ;;
-  *)            magick "$icon" -background none -resize 256x256 "$tmp" 2>/dev/null ;;
-esac
-[[ -s "$tmp" ]] || exit 1
+def log(msg):
+    try:
+        os.makedirs(CACHE, exist_ok=True)
+        if os.path.exists(LOG) and os.path.getsize(LOG) > 200_000:
+            os.remove(LOG)
+        with open(LOG, "a") as f:
+            f.write(time.strftime("%H:%M:%S ") + msg + "\n")
+    except OSError:
+        pass
 
-src="$("$neutral" "$tmp" 2>/dev/null)" || src=""
-if [[ "$src" == neutral ]]; then
-  json='{"colors":{"dark":{"primary":"#f2f2f2","on_primary":"#161616","primary_container":"#2c2c2c","surface":"#0f0f0f"}}}'
-elif [[ "$src" == \#* ]]; then
-  magick -size 64x64 "xc:$src" "$solid" 2>/dev/null
-  json="$(matugen image "$solid" --dry-run --json hex --mode dark --prefer saturation 2>>"$cache/.err")" || exit 1
-else
-  exit 1
-fi
-[[ "$json" == *"{"* ]] || exit 1
 
-printf '%s' "$json" > "$out.tmp" && mv "$out.tmp" "$out"
-printf '%s' "$json"
+def run(cmd, timeout=25):
+    try:
+        r = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr.decode("utf-8", "replace")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, b"", str(e)
+
+
+ICON_DIRS = [os.path.join(HOME, ".local/share/icons"), os.path.join(HOME, ".icons"), "/usr/share/icons", "/usr/share/pixmaps",
+             os.path.join(HOME, ".local/share/flatpak/exports/share/icons"), "/var/lib/flatpak/exports/share/icons"]
+
+
+def _conf_value(path, key):
+    try:
+        for line in open(path, encoding="utf-8", errors="replace"):
+            line = line.strip()
+            if line.startswith(key) and "=" in line:
+                return line.split("=", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    return None
+
+
+_IDX = None
+IDX_FILE = os.path.join(os.path.dirname(CACHE), "icon-index.txt")
+
+
+def icon_index(rebuild=False):
+    """stem -> [paths]. One `find` over the icon dirs, kept in ~/.cache/viii/icon-index.txt (rebuilt daily or on a miss)."""
+    global _IDX
+    if _IDX is not None and not rebuild:
+        return _IDX
+    age = time.time() - os.path.getmtime(IDX_FILE) if os.path.exists(IDX_FILE) else 1e9
+    if age > 86400 or (rebuild and age > 120):
+        dirs = [d for d in ICON_DIRS if os.path.isdir(d)]
+        if dirs:
+            cmd = ["find", "-L"] + dirs + ["-type", "f", "(", "-name", "*.svg", "-o", "-name", "*.svgz", "-o",
+                                           "-name", "*.png", "-o", "-name", "*.xpm", ")"]
+            rc, out, _ = run(cmd, timeout=180)
+            if out:
+                os.makedirs(os.path.dirname(IDX_FILE), exist_ok=True)
+                with open(IDX_FILE + ".tmp", "wb") as f:
+                    f.write(out)
+                os.replace(IDX_FILE + ".tmp", IDX_FILE)
+    d = {}
+    try:
+        for line in open(IDX_FILE, encoding="utf-8", errors="replace"):
+            p = line.rstrip("\n")
+            if p:
+                d.setdefault(os.path.splitext(os.path.basename(p))[0], []).append(p)
+    except OSError:
+        pass
+    _IDX = d
+    return d
+
+
+_THEMES = None
+
+
+def theme_order():
+    """icon themes in the order the desktop would use them (current theme, what it inherits, hicolor)"""
+    global _THEMES
+    if _THEMES is not None:
+        return _THEMES
+    names = []
+    for path, key in ((os.path.join(HOME, ".config/gtk-3.0/settings.ini"), "gtk-icon-theme-name"),
+                      (os.path.join(HOME, ".config/qt6ct/qt6ct.conf"), "icon_theme"),
+                      (os.path.join(HOME, ".config/qt5ct/qt5ct.conf"), "icon_theme"),
+                      (os.path.join(HOME, ".config/kdeglobals"), "Theme")):
+        v = _conf_value(path, key)
+        if v:
+            names.append(v)
+    rc, out, _ = run(["gsettings", "get", "org.gnome.desktop.interface", "icon-theme"], timeout=3)
+    if rc == 0 and out.strip():
+        names.append(out.decode().strip().strip("'\""))
+    order, queue = [], list(names)
+    while queue:
+        t = queue.pop(0)
+        if t in order:
+            continue
+        order.append(t)
+        for d in ICON_DIRS:
+            inh = _conf_value(os.path.join(d, t, "index.theme"), "Inherits")
+            if inh:
+                queue += [x.strip() for x in inh.split(",") if x.strip()]
+    if "hicolor" not in order:
+        order.append("hicolor")
+    _THEMES = order
+    return order
+
+
+def resolve(ref):
+    """'image://icon/firefox' | 'firefox' | '/path/icon.svg'  ->  real icon file or None"""
+    from urllib.parse import unquote
+    ref = unquote(ref or "")
+    if ref.startswith("file://"):
+        ref = ref[7:]
+    extra = []
+    if ref.startswith("image://icon/"):
+        ref = ref[len("image://icon/"):]
+        if "?" in ref:
+            ref, q = ref.split("?", 1)
+            for part in q.split("&"):
+                if part.startswith("path="):
+                    extra.append(part[5:])
+    if ref.startswith("/"):
+        return ref if os.path.isfile(ref) else None
+    name = ref.strip()
+    if not name:
+        return None
+    cands = []
+    for d in extra:
+        if os.path.isdir(d):
+            cands += [os.path.join(d, f) for f in os.listdir(d) if os.path.splitext(f)[0] == name]
+    cands += icon_index().get(name, [])
+    if not cands:
+        cands = icon_index(rebuild=True).get(name, [])      # app installed since the last scan
+    if not cands:
+        return None
+    themes = theme_order()
+    import re
+    def score(p):
+        t = next((i for i, th in enumerate(themes) if "/" + th + "/" in p), 99)
+        m = re.search(r"/(\d+)x\d+/", p)
+        size = 1000 if "scalable" in p else (int(m.group(1)) if m else 0)
+        vector = 0 if p.lower().endswith((".svg", ".svgz")) else 1
+        return (0 if "/apps/" in p else 1, t, vector, -min(size, 1000))
+    return sorted(cands, key=score)[0]
+
+
+def render(icon, out):
+    """icon -> 256px PNG"""
+    if icon.lower().endswith((".svg", ".svgz")) and shutil.which("resvg"):
+        rc, _, err = run(["resvg", "-w", "256", "-h", "256", icon, out])
+        if rc == 0 and os.path.getsize(out) > 0:
+            return True
+    if IM:
+        rc, _, err = run([IM, icon + "[0]", "-background", "none", "-resize", "256x256", out])
+        if rc == 0 and os.path.exists(out) and os.path.getsize(out) > 0:
+            return True
+    return False
+
+
+def dominant(png):
+    """-> '#rrggbb' dominant colour, 'neutral' for grey/black/white icons, None if unreadable"""
+    rc, data, err = run([IM, png, "-alpha", "on", "-background", "none", "-resize", "64x64", "-depth", "8", "rgba:-"])
+    if rc != 0 or len(data) < 4:
+        return None
+    n = colourful = 0
+    bins = [[0.0, 0.0, 0.0, 0.0] for _ in range(24)]  # weight, r, g, b (weighted sums)
+    for i in range(0, len(data) - 3, 4):
+        r, g, b, a = data[i], data[i + 1], data[i + 2], data[i + 3]
+        if a < 128:
+            continue
+        n += 1
+        mx, mn = max(r, g, b), min(r, g, b)
+        if mx == 0:
+            continue
+        s, v = (mx - mn) / mx, mx / 255
+        if s < 0.30 or v < 0.25:        # grey, white, black or very dark: not a colour
+            continue
+        colourful += 1
+        h = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)[0]
+        w = s * v
+        k = int(h * 24) % 24
+        bins[k][0] += w; bins[k][1] += r * w; bins[k][2] += g * w; bins[k][3] += b * w
+    if n == 0 or colourful / n < 0.02:
+        return "neutral"
+    score = [bins[k][0] + 0.5 * (bins[k - 1][0] + bins[(k + 1) % 24][0]) for k in range(24)]
+    best = max(range(24), key=lambda k: score[k])
+    w = r = g = b = 0.0
+    for k in (best - 1, best, (best + 1) % 24):
+        w += bins[k][0]; r += bins[k][1]; g += bins[k][2]; b += bins[k][3]
+    if w <= 0:
+        return "neutral"
+    return "#%02x%02x%02x" % (int(r / w), int(g / w), int(b / w))
+
+
+def norm(x):
+    if isinstance(x, dict):
+        x = x.get("color") or x.get("hex")
+    if not isinstance(x, str) or not x:
+        return None
+    return x if x.startswith("#") else "#" + x
+
+
+def extract(text):
+    """matugen JSON (any layout) -> {primary, on_primary, primary_container, surface} or None"""
+    a, b = text.find("{"), text.rfind("}")
+    if a < 0 or b < a:
+        return None
+    try:
+        j = json.loads(text[a:b + 1])
+    except ValueError:
+        return None
+    c = j.get("colors", j)
+    if not isinstance(c, dict):
+        return None
+    out = {}
+    for name in KEYS:
+        v = c.get(name)
+        got = norm(v) if isinstance(v, str) else None
+        if isinstance(v, dict):
+            for m in ("dark", "default"):
+                if m in v:
+                    got = norm(v[m]); break
+        if not got:
+            for m in ("dark", "default"):
+                d = c.get(m)
+                if isinstance(d, dict) and name in d:
+                    got = norm(d[name]); break
+        if not got:
+            return None
+        out[name] = got
+    return out
+
+
+def matugen_palette(hexcol, png_dir):
+    """returns (palette | None, how)"""
+    tries = [
+        ("color-hex", ["matugen", "color", "hex", hexcol, "--dry-run", "--json", "hex", "--mode", "dark"]),
+    ]
+    solid = os.path.join(png_dir, "solid.png")
+    if IM and run([IM, "-size", "64x64", "xc:" + hexcol, solid])[0] == 0:
+        tries.append(("image-prefer", ["matugen", "image", solid, "--dry-run", "--json", "hex", "--mode", "dark", "--prefer", "saturation"]))
+    for how, cmd in tries:
+        rc, out, err = run(cmd)
+        if rc == 0:
+            p = extract(out.decode("utf-8", "replace"))
+            if p:
+                return p, how
+            err = "unreadable JSON: " + out.decode("utf-8", "replace")[:120]
+        log("matugen %s failed: %s" % (how, " ".join(err.split())[:200]))
+    return None, "none"
+
+
+def tonal(hexcol):
+    """last resort when matugen itself is broken: same hue, fixed tones"""
+    r, g, b = (int(hexcol[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    s = max(0.45, min(0.85, s))
+    def hx(L, S):
+        rr, gg, bb = colorsys.hls_to_rgb(h, L, S)
+        return "#%02x%02x%02x" % (int(rr * 255), int(gg * 255), int(bb * 255))
+    return {"primary": hx(0.74, s), "on_primary": hx(0.12, 0.5), "primary_container": hx(0.28, s * 0.65), "surface": hx(0.10, 0.30)}
+
+
+def make(icon, key):
+    """-> (json_text, cacheable, note)"""
+    work = tempfile.mkdtemp(prefix="viii-pal-")
+    try:
+        real = resolve(icon)
+        if not real:
+            return None, False, "icon file not found for %s (theme order: %s)" % (icon, ", ".join(theme_order()[:4]))
+        icon = real
+        png = os.path.join(work, "icon.png")
+        if not render(icon, png):
+            return None, False, "cannot render icon file %s" % icon
+        dom = dominant(png) if IM else None
+        if dom is None:
+            return None, False, "cannot read pixels"
+        if dom == "neutral":
+            pal, note = dict(NEUTRAL), "neutral"
+        else:
+            pal, how = matugen_palette(dom, work)
+            if pal:
+                note = "%s via matugen/%s" % (dom, how)
+            else:
+                return json.dumps({"colors": {"dark": tonal(dom)}}), False, "%s TONAL FALLBACK (matugen failed, see .log)" % dom
+        return json.dumps({"colors": {"dark": pal}}), True, note
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def palette(icon, key):
+    os.makedirs(CACHE, exist_ok=True)
+    out = os.path.join(CACHE, key + ".json")
+    if os.path.exists(out) and os.path.getsize(out) > 2:
+        return open(out).read(), True, "cached"
+    text, cacheable, note = make(icon, key)
+    log("%s  %s  ->  %s" % (key, icon, note))
+    if text and cacheable:
+        with open(out + ".tmp", "w") as f:
+            f.write(text)
+        os.replace(out + ".tmp", out)
+    return text, bool(text), note
+
+
+def selftest():
+    import configparser, glob
+    print("matugen:", (run(["matugen", "--version"])[1] or b"MISSING").decode().strip(), "| imagemagick:", IM, "| resvg:", shutil.which("resvg"))
+    print("scanning icon folders (first run only, can take a few seconds)...", flush=True)
+    t0 = time.time(); n = sum(len(v) for v in icon_index().values())
+    print("  %d icon files indexed in %.1fs; icon theme order: %s" % (n, time.time() - t0, ", ".join(theme_order()[:4])), flush=True)
+    apps = []
+    for pat in (os.path.join(HOME, ".local/share/applications/*.desktop"), "/usr/share/applications/*.desktop"):
+        for f in sorted(glob.glob(pat)):
+            cp = configparser.RawConfigParser(strict=False, interpolation=None)
+            try:
+                cp.read(f, encoding="utf-8")
+                e = cp["Desktop Entry"]
+            except Exception:
+                continue
+            if e.get("NoDisplay", "false").lower() == "true" or not e.get("Icon"):
+                continue
+            apps.append((os.path.basename(f)[:-8], e.get("Name", "?"), e["Icon"]))
+    shown = 0
+    for key, name, ic in apps:
+        if shown >= 14:
+            break
+        shown += 1
+        path = resolve(ic)
+        if not path:
+            print("%-22s icon file NOT FOUND (%s)" % (name[:22], ic), flush=True)
+            continue
+        work = tempfile.mkdtemp(prefix="viii-pal-")
+        try:
+            png = os.path.join(work, "i.png")
+            if not render(path, png):
+                print("%-22s cannot render %s" % (name[:22], path), flush=True); continue
+            dom = dominant(png)
+            if dom and dom != "neutral":
+                pal, how = matugen_palette(dom, work)
+                res = ("primary " + pal["primary"] + " (matugen/" + how + ")") if pal else "MATUGEN FAILED (see .log)"
+            else:
+                res = "black/white palette" if dom == "neutral" else "unreadable"
+            print("%-22s dominant %-9s %s\n%-22s   %s" % (name[:22], dom, res, "", path), flush=True)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    print("(%d apps tested)" % shown)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 2 and sys.argv[1] == "--selftest":
+        selftest(); sys.exit(0)
+    if len(sys.argv) != 3:
+        sys.stderr.write("usage: viii-palette <icon-file> <cache-key>\n"); sys.exit(2)
+    text, ok, note = palette(sys.argv[1], sys.argv[2])
+    if not text:
+        sys.exit(1)
+    sys.stdout.write(text)

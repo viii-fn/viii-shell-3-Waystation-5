@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# viii-palette <icon-file> <key>
+# Icon -> 256px PNG -> dominant colour -> matugen -> JSON on stdout. The result is cached per key, so each app costs one run, ever.
+#  - a black/white/grey icon (Zed, terminals...) gets a plain black-and-white palette, no matugen involved:
+#    matugen invents a hue for a grey source, which is how a black-and-white icon ended up green
+#  - a coloured icon is reduced to its dominant colour first, and matugen builds the palette from exactly that colour
+set -u
+icon="${1:?icon path}"; key="${2:?cache key}"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/viii/palettes"
+out="$cache/$key.json"
+neutral="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/viii-neutral"
+mkdir -p "$cache"
+
+if [[ -s "$out" ]]; then cat "$out"; exit 0; fi
+
+tmp="$(mktemp --suffix=.png)"; solid="$(mktemp --suffix=.png)"
+trap 'rm -f "$tmp" "$solid"' EXIT
+
+case "$icon" in
+  *.svg|*.svgz) resvg -w 256 -h 256 "$icon" "$tmp" 2>/dev/null ;;
+  *)            magick "$icon" -background none -resize 256x256 "$tmp" 2>/dev/null ;;
+esac
+[[ -s "$tmp" ]] || exit 1
+
+src="$("$neutral" "$tmp" 2>/dev/null)" || src=""
+if [[ "$src" == neutral ]]; then
+  json='{"colors":{"dark":{"primary":"#f2f2f2","on_primary":"#161616","primary_container":"#2c2c2c","surface":"#0f0f0f"}}}'
+elif [[ "$src" == \#* ]]; then
+  magick -size 64x64 "xc:$src" "$solid" 2>/dev/null
+  json="$(matugen image "$solid" --dry-run --json hex --mode dark --prefer saturation 2>>"$cache/.err")" || exit 1
+else
+  exit 1
+fi
+[[ "$json" == *"{"* ]] || exit 1
+
+printf '%s' "$json" > "$out.tmp" && mv "$out.tmp" "$out"
+printf '%s' "$json"

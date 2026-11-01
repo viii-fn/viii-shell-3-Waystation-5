@@ -56,13 +56,14 @@ Singleton {
     function request(entry) {
         if (entry.isLibrary === true || entry.isWall === true) return;
         const k = safeKey(entry);
-        if (palettes[k] || failed[k] || busyKey === k || queue.some(q => q.key === k)) return;
-        queue.push({ key: k, icon: iconPath(entry) });
+        if (palettes[k] || failed[k] || busyKey === k) return;
+        if (!queue.some(q => q.key === k)) queue.push({ key: k, icon: iconPath(entry) });
         pump();
     }
 
     function pump() {
-        if (proc.running || queue.length === 0) return;
+        if (queue.length === 0) return;
+        if (proc.running || busyKey !== "") { pumpTimer.restart(); return; }
         const job = queue.shift();
         if (!job.icon) { failed[job.key] = true; Qt.callLater(pump); return; }
         busyKey = job.key;
@@ -81,7 +82,7 @@ Singleton {
             failed[busyKey] = true;
         }
         busyKey = "";
-        pump();
+        pumpTimer.restart();
     }
 
     // Reads matugen's JSON whatever the exact layout is:
@@ -112,6 +113,13 @@ Singleton {
             surface: fix(val("surface"))
         };
         return (p.primary && p.onPrimary && p.primaryContainer && p.surface) ? p : null;
+    }
+
+    // the output of one job can finish a moment before its process exits: retry until the process is gone
+    Timer {
+        id: pumpTimer
+        interval: 60
+        onTriggered: root.pump()
     }
 
     Process {
