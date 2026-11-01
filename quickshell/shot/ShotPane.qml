@@ -36,6 +36,16 @@ PanelWindow {
     property bool dragging: false
     property real ax: 0
     property real ay: 0
+    property real selX: 0                  // the region (kept after release so it can be adjusted)
+    property real selY: 0
+    property real selW: 0
+    property real selH: 0
+    property string dragKind: ""           // new | move | n s e w ne nw se sw
+    property real px0: 0
+    property real py0: 0
+    property rect startRect: Qt.rect(0, 0, 0, 0)
+    property real guideX: -1               // snap guide lines (-1 = none)
+    property real guideY: -1
     property real pv: 0                    // 0..1 enter animation
     property real pop: 0                   // springy pop of the pane
     property bool flashing: false          // capture flash / leave fade is running
@@ -117,6 +127,7 @@ PanelWindow {
         choice = 0;
         dragging = false;
         rects = [];
+        clearSel();
         frozenPath = "/tmp/viii-shot-" + screen.name + "-" + Date.now() + ".png";
         grim.command = ["grim", "-o", screen.name, frozenPath];
         grim.running = true;
@@ -150,6 +161,7 @@ PanelWindow {
         flashing = false;
         frozenUrl = "";
         mode = "pane";
+        clearSel();
     }
     function fail(msg) {
         revealTimer.stop();
@@ -166,11 +178,14 @@ PanelWindow {
     }
     function back() {
         dragging = false;
+        dragKind = "";
+        guideX = -1; guideY = -1;
+        if (mode === "region" && selW > 0) { clearSel(); return; }     // Esc once = redo the selection
         if (mode === "pane") dismiss(); else mode = "pane";
     }
     function pick(i) {
         choice = i;
-        if (i === 0) mode = "region";
+        if (i === 0) { clearSel(); mode = "region"; if (!winProc.running) winProc.running = true; }
         else if (i === 1) { mode = "window"; if (!winProc.running) winProc.running = true; }
         else grab(0, 0, 0, 0);
     }
@@ -213,6 +228,84 @@ PanelWindow {
         return null;
     }
 
+    function clearSel() { selX = 0; selY = 0; selW = 0; selH = 0; dragKind = ""; guideX = -1; guideY = -1; }
+    function clampX(v) { return Math.max(0, Math.min(win.width, v)); }
+    function clampY(v) { return Math.max(0, Math.min(win.height, v)); }
+
+    // snap targets: the screen edges and the edges of every window on this workspace
+    function xCands() { const a = [0, win.width]; for (let i = 0; i < rects.length; i++) a.push(rects[i].x, rects[i].x + rects[i].w); return a; }
+    function yCands() { const a = [0, win.height]; for (let i = 0; i < rects.length; i++) a.push(rects[i].y, rects[i].y + rects[i].h); return a; }
+    function snapEdge(v, cands) {
+        let best = v, bd = 9, hit = -1;
+        for (let i = 0; i < cands.length; i++) {
+            const d = Math.abs(cands[i] - v);
+            if (d < bd) { bd = d; best = cands[i]; hit = cands[i]; }
+        }
+        return { v: best, hit: hit, d: bd };
+    }
+
+    // which part of the committed region is under (mx, my): a handle, "move", or "" (outside)
+    function zoneAt(mx, my) {
+        if (selW < 4 || selH < 4) return "";
+        const x0 = selX, y0 = selY, x1 = selX + selW, y1 = selY + selH, t = 10;
+        if (mx < x0 - t || mx > x1 + t || my < y0 - t || my > y1 + t) return "";
+        let z = "";
+        if (Math.abs(my - y0) <= t) z += "n"; else if (Math.abs(my - y1) <= t) z += "s";
+        if (Math.abs(mx - x0) <= t) z += "w"; else if (Math.abs(mx - x1) <= t) z += "e";
+        if (z !== "") return z;
+        return (mx >= x0 && mx <= x1 && my >= y0 && my <= y1) ? "move" : "";
+    }
+    function cursorForZone(z) {
+        if (z === "") return Qt.BlankCursor;
+        if (z === "move") return Qt.SizeAllCursor;
+        if (z === "n" || z === "s") return Qt.SizeVerCursor;
+        if (z === "e" || z === "w") return Qt.SizeHorCursor;
+        if (z === "nw" || z === "se") return Qt.SizeFDiagCursor;
+        return Qt.SizeBDiagCursor;
+    }
+
+    function dragTo(mx, my) {
+        const sr = startRect;
+        const xc = xCands(), yc = yCands();
+        let gx = -1, gy = -1;
+        if (dragKind === "new") {
+            const sx = snapEdge(clampX(mx), xc), sy = snapEdge(clampY(my), yc);
+            gx = sx.hit; gy = sy.hit;
+            selX = Math.min(ax, sx.v); selY = Math.min(ay, sy.v);
+            selW = Math.abs(sx.v - ax); selH = Math.abs(sy.v - ay);
+        } else if (dragKind === "move") {
+            let nx = Math.max(0, Math.min(win.width - sr.width, sr.x + mx - px0));
+            let ny = Math.max(0, Math.min(win.height - sr.height, sr.y + my - py0));
+            const lx = snapEdge(nx, xc), rx = snapEdge(nx + sr.width, xc);
+            if (lx.hit >= 0 && (rx.hit < 0 || lx.d <= rx.d)) { nx = lx.v; gx = lx.hit; }
+            else if (rx.hit >= 0) { nx = rx.v - sr.width; gx = rx.hit; }
+            const ty = snapEdge(ny, yc), by = snapEdge(ny + sr.height, yc);
+            if (ty.hit >= 0 && (by.hit < 0 || ty.d <= by.d)) { ny = ty.v; gy = ty.hit; }
+            else if (by.hit >= 0) { ny = by.v - sr.height; gy = by.hit; }
+            selX = Math.max(0, Math.min(win.width - sr.width, nx));
+            selY = Math.max(0, Math.min(win.height - sr.height, ny));
+        } else {
+            let l = sr.x, r = sr.x + sr.width, t = sr.y, b = sr.y + sr.height;
+            if (dragKind.indexOf("w") >= 0) { const s = snapEdge(clampX(mx), xc); l = s.v; gx = s.hit; }
+            if (dragKind.indexOf("e") >= 0) { const s = snapEdge(clampX(mx), xc); r = s.v; gx = s.hit; }
+            if (dragKind.indexOf("n") >= 0) { const s = snapEdge(clampY(my), yc); t = s.v; gy = s.hit; }
+            if (dragKind.indexOf("s") >= 0) { const s = snapEdge(clampY(my), yc); b = s.v; gy = s.hit; }
+            selX = Math.min(l, r); selW = Math.abs(r - l);
+            selY = Math.min(t, b); selH = Math.abs(b - t);
+        }
+        guideX = gx;
+        guideY = gy;
+    }
+
+    function snap() { if (selW >= 4 && selH >= 4) grab(selX, selY, selW, selH); }
+
+    function nudge(dx, dy, big) {
+        if (selW < 4) return;
+        const st = big ? 10 : 1;
+        selX = Math.max(0, Math.min(win.width - selW, selX + dx * st));
+        selY = Math.max(0, Math.min(win.height - selH, selY + dy * st));
+    }
+
     function handleKey(e) {
         let ok = true;
         if (e.key === Qt.Key_Escape) back();
@@ -228,6 +321,11 @@ PanelWindow {
             default: ok = false;
             }
         } else if (e.key === Qt.Key_Backspace) back();
+        else if (mode === "region" && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space)) snap();
+        else if (mode === "region" && e.key === Qt.Key_Left) nudge(-1, 0, e.modifiers & Qt.ShiftModifier);
+        else if (mode === "region" && e.key === Qt.Key_Right) nudge(1, 0, e.modifiers & Qt.ShiftModifier);
+        else if (mode === "region" && e.key === Qt.Key_Up) nudge(0, -1, e.modifiers & Qt.ShiftModifier);
+        else if (mode === "region" && e.key === Qt.Key_Down) nudge(0, 1, e.modifiers & Qt.ShiftModifier);
         else ok = false;
         e.accepted = ok;
     }
@@ -235,14 +333,11 @@ PanelWindow {
     // ---- selection geometry -----------------------------------------------------------------
     readonly property var hoverWin: (mode === "window" && area.containsMouse) ? hit(area.mouseX, area.mouseY) : null
 
+    readonly property string zoneNow: mode !== "region" ? ""
+        : (dragging ? (dragKind === "new" ? "" : dragKind) : (area.containsMouse ? zoneAt(area.mouseX, area.mouseY) : ""))
+
     readonly property rect selRect: {
-        if (mode === "region" && dragging) {
-            const x0 = Math.max(0, Math.min(win.width, Math.round(Math.min(ax, area.mouseX))));
-            const y0 = Math.max(0, Math.min(win.height, Math.round(Math.min(ay, area.mouseY))));
-            const x1 = Math.max(0, Math.min(win.width, Math.round(Math.max(ax, area.mouseX))));
-            const y1 = Math.max(0, Math.min(win.height, Math.round(Math.max(ay, area.mouseY))));
-            return Qt.rect(x0, y0, x1 - x0, y1 - y0);
-        }
+        if (mode === "region") return Qt.rect(selX, selY, selW, selH);
         if (mode === "window" && hoverWin) return Qt.rect(hoverWin.x, hoverWin.y, hoverWin.w, hoverWin.h);
         return Qt.rect(0, 0, 0, 0);
     }
@@ -333,17 +428,32 @@ PanelWindow {
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             enabled: win.open
-            cursorShape: win.mode === "region" ? Qt.BlankCursor : Qt.ArrowCursor
+            cursorShape: win.mode === "region" ? win.cursorForZone(win.zoneNow) : Qt.ArrowCursor
             onPressed: mouse => {
                 if (mouse.button === Qt.RightButton) { win.back(); return; }
-                if (win.mode === "region") { win.ax = mouse.x; win.ay = mouse.y; win.dragging = true; }
+                if (win.mode !== "region") return;
+                const z = win.zoneAt(mouse.x, mouse.y);
+                win.px0 = mouse.x;
+                win.py0 = mouse.y;
+                win.startRect = Qt.rect(win.selX, win.selY, win.selW, win.selH);
+                if (z !== "") win.dragKind = z;
+                else {
+                    win.dragKind = "new";
+                    win.ax = win.snapEdge(win.clampX(mouse.x), win.xCands()).v;
+                    win.ay = win.snapEdge(win.clampY(mouse.y), win.yCands()).v;
+                    win.selX = win.ax; win.selY = win.ay; win.selW = 0; win.selH = 0;
+                }
+                win.dragging = true;
             }
+            onPositionChanged: mouse => { if (win.dragging && win.mode === "region") win.dragTo(mouse.x, mouse.y); }
             onReleased: mouse => {
                 if (mouse.button !== Qt.LeftButton) return;
-                if (win.mode === "region" && win.dragging) {
-                    const r = win.selRect;
+                if (win.mode === "region") {
+                    if (win.dragging && win.dragKind === "new" && (win.selW < 4 || win.selH < 4)) { win.selW = 0; win.selH = 0; }
                     win.dragging = false;
-                    if (r.width >= 4 && r.height >= 4) win.grab(r.x, r.y, r.width, r.height);
+                    win.dragKind = "";
+                    win.guideX = -1;
+                    win.guideY = -1;
                 } else if (win.mode === "window") {
                     const h = win.hoverWin;
                     if (h) win.grab(h.x, h.y, h.w, h.h);
@@ -360,15 +470,37 @@ PanelWindow {
             Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
             // crosshair
-            Rectangle { x: Math.round(area.mouseX); y: 0; width: 1; height: win.height; color: Qt.rgba(1, 1, 1, 0.55); visible: area.containsMouse }
-            Rectangle { x: 0; y: Math.round(area.mouseY); width: win.width; height: 1; color: Qt.rgba(1, 1, 1, 0.55); visible: area.containsMouse }
+            Rectangle { x: Math.round(area.mouseX); y: 0; width: 1; height: win.height; color: Qt.rgba(1, 1, 1, 0.55); visible: area.containsMouse && win.zoneNow === "" }
+            Rectangle { x: 0; y: Math.round(area.mouseY); width: win.width; height: 1; color: Qt.rgba(1, 1, 1, 0.55); visible: area.containsMouse && win.zoneNow === "" }
             Rectangle {
                 x: Math.round(area.mouseX) - 5; y: Math.round(area.mouseY) - 5
                 width: 11; height: 11
                 color: "transparent"
                 border.width: 1
                 border.color: Theme.fg
-                visible: area.containsMouse
+                visible: area.containsMouse && win.zoneNow === ""
+            }
+
+            // snap guides (shown while an edge snaps to a window or screen edge)
+            Rectangle { visible: win.dragging && win.guideX >= 0; x: win.guideX; y: 0; width: 1; height: win.height; color: Theme.accent }
+            Rectangle { visible: win.dragging && win.guideY >= 0; x: 0; y: win.guideY; width: win.width; height: 1; color: Theme.accent }
+
+            // eight resize handles on the kept region
+            Repeater {
+                model: 8
+                delegate: Rectangle {
+                    required property int index
+                    readonly property real fx: [0, 0.5, 1, 1, 1, 0.5, 0, 0][index]
+                    readonly property real fy: [0, 0, 0, 0.5, 1, 1, 1, 0.5][index]
+                    visible: win.selW >= 12 && win.selH >= 12 && !(win.dragging && win.dragKind === "new")
+                    x: selBox.x + fx * selBox.width - 4.5
+                    y: selBox.y + fy * selBox.height - 4.5
+                    width: 9; height: 9
+                    radius: 3
+                    color: Theme.fg
+                    border.width: 1
+                    border.color: Qt.rgba(0, 0, 0, 0.5)
+                }
             }
 
             // rulers
@@ -525,6 +657,53 @@ PanelWindow {
                         text: Math.floor(area.mouseX) + ",  " + Math.floor(area.mouseY)
                     }
                 }
+            }
+        }
+
+        // Capture / Redo pill under the kept region
+        Item {
+            id: pill
+            readonly property bool show: win.open && win.mode === "region" && win.selW >= 4 && win.selH >= 4 && !win.dragging
+            opacity: show ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 140 } }
+            width: pillRow.width + 20
+            height: 40
+            x: Math.max(8, Math.min(win.width - width - 8, selBox.x + selBox.width / 2 - width / 2))
+            y: (selBox.y + selBox.height + 14 + height < win.height - 6) ? selBox.y + selBox.height + 14 : selBox.y + selBox.height - height - 12
+
+            Rectangle {
+                anchors.fill: parent
+                radius: 20
+                color: Qt.rgba(0.07, 0.078, 0.098, 0.94)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.16)
+            }
+            MouseArea { anchors.fill: parent }      // clicks on the pill never start a new selection
+            Row {
+                id: pillRow
+                anchors.centerIn: parent
+                spacing: 12
+                Rectangle {
+                    width: capText.width + 28
+                    height: 28
+                    radius: 14
+                    color: Theme.fg
+                    Txt {
+                        id: capText
+                        anchors.centerIn: parent
+                        text: "Capture  (Enter)"
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: "#0b0d12"
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: win.snap()
+                    }
+                }
+                Hint { key: "Esc"; label: "Redo" }
             }
         }
 
