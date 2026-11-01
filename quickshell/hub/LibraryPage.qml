@@ -7,6 +7,7 @@ Item {
 
     property var entries: []
     property int current: 0
+    property string query: ""
 
     signal launched(var entry, real x, real y, real w, real h)
 
@@ -80,6 +81,16 @@ Item {
         target: grid; property: "contentY"
         duration: Motion.scroll
         easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out
+    }
+
+    // nothing matched the search
+    Txt {
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: 200
+        visible: root.query !== "" && root.entries.length === 0
+        text: "No apps match \u201c" + root.query + "\u201d"
+        font.pixelSize: 22
+        color: Theme.fgDim
     }
 
     GridView {

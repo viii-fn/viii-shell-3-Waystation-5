@@ -311,8 +311,8 @@ PanelWindow {
         if (e.key === Qt.Key_Escape) back();
         else if (mode === "pane") {
             switch (e.key) {
-            case Qt.Key_Left: case Qt.Key_H: choice = Math.max(0, choice - 1); break;
-            case Qt.Key_Right: case Qt.Key_L: choice = Math.min(2, choice + 1); break;
+            case Qt.Key_Left: choice = Math.max(0, choice - 1); break;
+            case Qt.Key_Right: choice = Math.min(2, choice + 1); break;
             case Qt.Key_Tab: choice = (choice + 1) % 3; break;
             case Qt.Key_1: case Qt.Key_R: pick(0); break;
             case Qt.Key_2: case Qt.Key_W: pick(1); break;

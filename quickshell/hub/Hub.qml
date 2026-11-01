@@ -47,7 +47,7 @@ PanelWindow {
     readonly property real dW: width / s
     readonly property real dH: height / s
     readonly property real vOff: Math.max(0, (dH - 768) / 2)
-    readonly property bool appsMissing: home.entries.length <= 2 || lib.entries.length === 0
+    readonly property bool appsMissing: home.entries.length <= 2 || libAll.length === 0
 
     readonly property var sel: page === 1 ? lib.cur : home.cur
 
@@ -61,8 +61,42 @@ PanelWindow {
     function rebuild() {
         home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
         home.reset();
-        lib.entries = Apps.alphabetical();
+        libAll = Apps.alphabetical();
+        filterLib();
+    }
+
+    // ---- search: type any letter to jump to the Library and filter it ----
+    function matchRank(e, q) {
+        const n = String(e.name || "").toLowerCase();
+        if (n.indexOf(q) === 0) return 0;
+        if (n.indexOf(" " + q) >= 0) return 1;
+        if (n.indexOf(q) >= 0) return 2;
+        const extra = (String(e.genericName || "") + " " + String(e.comment || "") + " " + Array.prototype.join.call(e.keywords || [], " ")).toLowerCase();
+        return extra.indexOf(q) >= 0 ? 3 : -1;
+    }
+    function filterLib() {
+        const q = query.trim().toLowerCase();
+        if (q === "") { lib.entries = libAll; lib.reset(); return; }
+        const hits = [];
+        for (let i = 0; i < libAll.length; i++) {
+            const r = matchRank(libAll[i], q);
+            if (r >= 0) hits.push({ e: libAll[i], r: r });
+        }
+        hits.sort((a, b) => (a.r - b.r) || a.e.name.localeCompare(b.e.name));
+        lib.entries = hits.map(h => h.e);
         lib.reset();
+    }
+    function typeChar(ch) {
+        page = 1;
+        tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false;
+        searchOpen = true;
+        query = query + ch;
+    }
+    function openSearch() {
+        page = 1;
+        tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false;
+        searchOpen = true;
+        root.forceActiveFocus();
     }
 
     function tint() {
@@ -151,6 +185,12 @@ PanelWindow {
     property bool historyOpen: false
     property bool bellFocus: false
     property bool settingsOpen: false
+    property bool searchFocus: false     // top-bar search button has keyboard focus
+    property bool searchOpen: false      // the search field is open (Library page)
+    property string query: ""
+    property var libAll: []              // every app, A-Z; lib.entries is this list filtered by query
+    onQueryChanged: filterLib()
+    onPageChanged: { if (page === 0) { query = ""; searchOpen = false; searchFocus = false; } }
 
     function openStore() { storeOpen = true; Theme.applyWallpaper(); }
     function openHistory() {
@@ -193,20 +233,22 @@ PanelWindow {
 
     function horiz(d) {
         if (tabsFocus) {
-            if (bellFocus) { if (d < 0) { bellFocus = false; gearFocus = true; } }
-            else if (gearFocus) { if (d < 0) gearFocus = false; else { gearFocus = false; bellFocus = true; } }
-            else if (page === 1 && d > 0) gearFocus = true;
+            if (gearFocus) { if (d < 0) { gearFocus = false; bellFocus = true; } }
+            else if (bellFocus) { if (d < 0) { bellFocus = false; searchFocus = true; } else { bellFocus = false; gearFocus = true; } }
+            else if (searchFocus) { if (d < 0) searchFocus = false; else { searchFocus = false; bellFocus = true; } }
+            else if (page === 1 && d > 0) searchFocus = true;
             else page = Math.max(0, Math.min(1, page + d));
         }
         else if (page === 0) home.move(d);
         else lib.move(d, 0);
     }
     function vert(d) {
-        if (tabsFocus) { if (d > 0) { tabsFocus = false; gearFocus = false; bellFocus = false; } }
+        if (tabsFocus) { if (d > 0) { tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false; } }
         else if (page === 0) { if (d < 0) tabsFocus = true; }
         else { if (!lib.move(0, d) && d < 0) tabsFocus = true; }
     }
     function choose() {
+        if (tabsFocus && searchFocus) { openSearch(); return; }
         if (tabsFocus && bellFocus) { openHistory(); return; }
         if (tabsFocus && gearFocus) { openSettings(); return; }
         if (tabsFocus) tabsFocus = false;
@@ -216,7 +258,10 @@ PanelWindow {
     function back() {
         bellFocus = false;
         gearFocus = false;
-        if (tabsFocus) tabsFocus = false;
+        searchFocus = false;
+        if (query !== "") query = "";
+        else if (searchOpen) searchOpen = false;
+        else if (tabsFocus) tabsFocus = false;
         else if (page === 1) page = 0;
         else Desk.summoned = false;
     }
@@ -228,14 +273,20 @@ PanelWindow {
         if (launching) { e.accepted = true; return; }
         let handled = true;
         switch (e.key) {
-        case Qt.Key_Left: case Qt.Key_H: horiz(-1); break;
-        case Qt.Key_Right: case Qt.Key_L: horiz(1); break;
-        case Qt.Key_Up: case Qt.Key_K: vert(-1); break;
-        case Qt.Key_Down: case Qt.Key_J: vert(1); break;
-        case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: choose(); break;
-        case Qt.Key_Tab: page = 1 - page; tabsFocus = false; gearFocus = false; bellFocus = false; break;
+        case Qt.Key_Left: horiz(-1); break;
+        case Qt.Key_Right: horiz(1); break;
+        case Qt.Key_Up: vert(-1); break;
+        case Qt.Key_Down: vert(1); break;
+        case Qt.Key_Return: case Qt.Key_Enter: choose(); break;
+        case Qt.Key_Space: if (searchOpen && query !== "") typeChar(" "); else choose(); break;
+        case Qt.Key_Backspace: if (searchOpen && query !== "") query = query.slice(0, -1); else handled = false; break;
+        case Qt.Key_Tab: page = 1 - page; tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false; break;
         case Qt.Key_Escape: back(); break;
-        default: handled = false;
+        default: {
+            const c = e.text.length === 1 ? e.text.charCodeAt(0) : 0;
+            if ((e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0 && c >= 32 && c !== 127) typeChar(e.text);
+            else handled = false;
+        }
         }
         e.accepted = handled;
     }
@@ -281,11 +332,15 @@ PanelWindow {
                 tabsFocus: win.tabsFocus
                 gearFocus: win.gearFocus
                 bellFocus: win.bellFocus
+                searchFocus: win.searchFocus
+                searchOpen: win.searchOpen
+                query: win.query
                 opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal)
                 visible: opacity > 0.01
                 onTabClicked: index => { win.page = index; win.tabsFocus = false; }
                 onSettingsClicked: win.openSettings()
                 onHistoryClicked: win.openHistory()
+                onSearchClicked: win.openSearch()
             }
 
             HomePage {
@@ -302,6 +357,7 @@ PanelWindow {
 
             LibraryPage {
                 id: lib
+                query: win.query
                 width: parent.width
                 height: parent.height
                 opacity: win.pageT * (1 - settings.reveal)
@@ -320,6 +376,7 @@ PanelWindow {
                 Hint { key: "\u2190 \u2192"; label: "Browse" }
                 Hint { key: "Enter"; label: win.page === 0 && win.sel && win.sel.isLibrary === true ? "Browse" : "Open" }
                 Hint { key: "Tab"; label: "Switch" }
+                Hint { key: "A-Z"; label: "Search" }
                 Hint { key: "Esc"; label: "Back" }
             }
 

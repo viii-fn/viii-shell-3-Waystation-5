@@ -108,10 +108,10 @@ Item {
     function key(e) {
         let ok = true;
         switch (e.key) {
-        case Qt.Key_Left: case Qt.Key_H: select(idx - 1); break;
-        case Qt.Key_Right: case Qt.Key_L: select(idx + 1); break;
-        case Qt.Key_Up: case Qt.Key_K: adjust(1); break;
-        case Qt.Key_Down: case Qt.Key_J: adjust(-1); break;
+        case Qt.Key_Left: select(idx - 1); break;
+        case Qt.Key_Right: select(idx + 1); break;
+        case Qt.Key_Up: adjust(1); break;
+        case Qt.Key_Down: adjust(-1); break;
         case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: enter(); break;
         case Qt.Key_Escape: Desk.ccOpen = false; break;
         default: ok = false;

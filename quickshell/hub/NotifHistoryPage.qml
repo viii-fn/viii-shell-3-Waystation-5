@@ -101,11 +101,11 @@ Item {
             else if (btnFocus) btnFocus = false;
             else closeRequested();
             break;
-        case Qt.Key_Up: case Qt.Key_K:
+        case Qt.Key_Up:
             if (btnFocus) break;
             if (current === 0 && count > 0) btnFocus = true; else move(-1);
             break;
-        case Qt.Key_Down: case Qt.Key_J:
+        case Qt.Key_Down:
             if (btnFocus) { btnFocus = false; armed = false; armTimer.stop(); }
             else move(1);
             break;
@@ -116,7 +116,7 @@ Item {
         case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space:
             if (btnFocus) pressClear();
             break;
-        case Qt.Key_Left: case Qt.Key_Right: case Qt.Key_H: case Qt.Key_L: break;
+        case Qt.Key_Left: case Qt.Key_Right: break;
         default: handled = false;
         }
         e.accepted = handled;

@@ -10,9 +10,13 @@ Item {
     property bool tabsFocus: false
     property bool gearFocus: false
     property bool bellFocus: false
+    property bool searchFocus: false
+    property bool searchOpen: false
+    property string query: ""
     signal tabClicked(int index)
     signal settingsClicked()
     signal historyClicked()
+    signal searchClicked()
 
     height: 110
 
@@ -67,6 +71,69 @@ Item {
         y: 38
         spacing: 24
         layoutDirection: Qt.LeftToRight
+
+        // Search: click it, or just type a letter anywhere. Grows into a field while searching.
+        Item {
+            id: searchBox
+            readonly property bool active: root.searchOpen
+            readonly property bool hot: searchArea.containsMouse || root.searchFocus
+            property bool caretOn: true
+            width: active ? 270 : 42
+            height: 42
+            Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+            scale: searchArea.pressed ? 0.97 : ((hot && !active) ? 1.08 : 1)
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Timer {
+                interval: 530
+                repeat: true
+                running: searchBox.active
+                onTriggered: searchBox.caretOn = !searchBox.caretOn
+                onRunningChanged: searchBox.caretOn = true
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: 21
+                color: Theme.glassHi
+                border.width: 1
+                border.color: searchBox.active ? Theme.fg : Theme.glassBorder
+                opacity: (searchBox.hot || searchBox.active) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+            }
+            Txt {
+                x: searchBox.active ? 13 : (searchBox.width - width) / 2
+                anchors.verticalCenter: parent.verticalCenter
+                text: "\uf002"
+                font.family: Theme.iconFont
+                font.pixelSize: 19
+                color: Theme.fg
+            }
+            Txt {
+                id: sText
+                x: 42
+                width: searchBox.width - 56
+                anchors.verticalCenter: parent.verticalCenter
+                visible: searchBox.width > 120
+                opacity: searchBox.active ? 1 : 0
+                text: root.query !== "" ? root.query : "Search apps"
+                color: root.query !== "" ? Theme.fg : Theme.fgDim
+                elide: Text.ElideLeft
+                font.pixelSize: 17
+            }
+            Rectangle {
+                x: 42 + (root.query !== "" ? Math.min(sText.contentWidth, sText.width) + 2 : 0)
+                anchors.verticalCenter: parent.verticalCenter
+                width: 2; height: 20; radius: 1
+                color: Theme.fg
+                visible: searchBox.active && searchBox.caretOn && searchBox.width > 120
+            }
+            MouseArea {
+                id: searchArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.searchClicked()
+            }
+        }
 
         // Notification history bell (opens the history page; SUPER+N does the same).
         Item {

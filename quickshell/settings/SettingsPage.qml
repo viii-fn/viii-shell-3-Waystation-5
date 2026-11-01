@@ -639,21 +639,18 @@ FocusScope {
             else closeRequested();
             break;
         case Qt.Key_Left:
-        case Qt.Key_H:
             if (pane === 1 && currentRows[rowIndex]
                 && (currentRows[rowIndex].kind === "slider" || currentRows[rowIndex].kind === "cycle"))
                 adjust(-1);
             else if (pane === 1) pane = 0;
             break;
         case Qt.Key_Right:
-        case Qt.Key_L:
             if (pane === 0) pane = 1;
             else if (currentRows[rowIndex]
                 && (currentRows[rowIndex].kind === "slider" || currentRows[rowIndex].kind === "cycle"))
                 adjust(1);
             break;
         case Qt.Key_Up:
-        case Qt.Key_K:
             if (pane === 0) {
                 if (categoryIndex === 0) bump(-1);
                 else selectCategory(categoryIndex - 1);
@@ -664,7 +661,6 @@ FocusScope {
             clearConfirmHint();
             break;
         case Qt.Key_Down:
-        case Qt.Key_J:
             if (pane === 0) {
                 if (categoryIndex === categories.length - 1) bump(1);
                 else selectCategory(categoryIndex + 1);
