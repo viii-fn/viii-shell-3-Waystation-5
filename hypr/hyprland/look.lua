@@ -57,7 +57,7 @@ try("decoration", hl.config, {
         blur = {
             enabled  = true,
             size     = 4,
-            passes   = 1,
+            passes   = 3,
             vibrancy = 0,
         },
     },
