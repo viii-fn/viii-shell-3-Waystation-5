@@ -140,7 +140,7 @@ Item {
         } else if (mode === "conns") {
             connToggle(cardIdx);
         } else if (mode === "music") {
-            mpToggle();
+            mpAct();
         } else if (mode === "volume") {
             volDefault();
         } else if (mode === "mic") {
@@ -1289,6 +1289,22 @@ Item {
         return names[idx];
     }
 
+    // viii-cc-music-keys: the Music card has its own inner focus.
+    // mpPart: 0 = cover and title, 1 = previous, 2 = play/pause, 3 = next
+    property int mpPart: 2
+    Connections {
+        target: root
+        function onInCardsChanged() { if (root.inCards) root.mpPart = 2; }
+    }
+    function mpAct() {
+        const p = mpPlayers[cardIdx];
+        if (!p) return;
+        if (mpPart === 0) { if (p.canRaise) { p.raise(); Desk.ccOpen = false; } }
+        else if (mpPart === 1) mpSkip(-1);
+        else if (mpPart === 3) mpSkip(1);
+        else mpToggle();
+    }
+
     // ---- music (MPRIS) ----
     readonly property var mpPlayers: {
         const all = Mpris.players ? Mpris.players.values : [];
@@ -1381,9 +1397,14 @@ Item {
             else if (k === Qt.Key_M) micToggle();
             else return false;
         } else if (mode === "music") {
-            if (k === Qt.Key_Up) mpSkip(1);
-            else if (k === Qt.Key_Down) mpSkip(-1);
-            else return false;
+            if (k === Qt.Key_Left) {
+                if (mpPart > 0) mpPart = mpPart - 1;
+                else if (cardIdx > 0) { cardIdx = cardIdx - 1; mpPart = 3; }
+            } else if (k === Qt.Key_Right) {
+                if (mpPart < 3) mpPart = mpPart + 1;
+                else if (cardIdx < count - 1) { cardIdx = cardIdx + 1; mpPart = 0; }
+            } else if (k === Qt.Key_Space) mpToggle();
+            else return false;     // Up and Down: normal panel navigation
         } else if (mode === "battery" && cardIdx === battList.length) {
             if (k === Qt.Key_Up) Desk.briStep(5);
             else if (k === Qt.Key_Down) Desk.briStep(-5);
@@ -1515,17 +1536,29 @@ Item {
                         }
                     }
 
+                    // one ring that glides between the parts of the focused card
                     GlassRing {
-                        anchors.fill: parent
-                        anchors.margins: -4.5
-                        radius: 22
+                        readonly property bool whole: root.mpPart === 0
+                        readonly property real third: mc.width / 3
+                        x: whole ? 4 : (root.mpPart - 1) * third + (third - 64) / 2
+                        y: whole ? 4 : 314
+                        width: whole ? mc.width - 8 : 64
+                        height: whole ? 298 : 52
+                        radius: whole ? 16 : 26
                         opacity: mc.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
+                        Behavior on x { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+                        Behavior on y { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+                        Behavior on width { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+                        Behavior on height { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
                     }
                     Txt {
                         x: 2
                         y: mc.height + 14
-                        text: mc.modelData && mc.modelData.isPlaying ? "Pause" : "Play"
+                        text: root.mpPart === 0 ? (mc.modelData && mc.modelData.canRaise ? "Open player" : "")
+                            : (root.mpPart === 1 ? "Previous"
+                            : (root.mpPart === 3 ? "Next"
+                            : (mc.modelData && mc.modelData.isPlaying ? "Pause" : "Play")))
                         font.pixelSize: 17
                         font.weight: Font.DemiBold
                         opacity: mc.cur ? 1 : 0
@@ -1533,7 +1566,12 @@ Item {
                     }
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: { root.cardIdx = mc.index; root.inCards = true; root.activateCard(); }
+                        onClicked: (mouse) => {
+                            root.cardIdx = mc.index;
+                            root.inCards = true;
+                            root.mpPart = mouse.y < 306 ? 0 : 1 + Math.max(0, Math.min(2, Math.floor(mouse.x / (mc.width / 3))));
+                            root.mpAct();
+                        }
                     }
                 }
             }
