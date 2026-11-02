@@ -52,14 +52,14 @@ PanelWindow {
     readonly property var sel: page === 1 ? lib.cur : home.cur
 
     function iconUrl(entry) {
-        if (!entry || entry.isLibrary === true || entry.isWall === true || entry.isWelcome === true) return "";
+        if (!entry || entry.isLibrary === true || entry.isWall === true || entry.isWelcome === true || entry.isExplore === true) return "";
         const p = Apps.iconPath(entry);
         if (!p) return "";
         return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
     function rebuild() {
-        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }, { isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }, { isExplore: true, name: "Explore", id: "viii.explore" }, { isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
         home.reset();
         libAll = Apps.alphabetical();
         filterLib();
@@ -202,7 +202,7 @@ PanelWindow {
     property string query: ""
     property var libAll: []              // every app, A-Z; lib.entries is this list filtered by query
     onQueryChanged: filterLib()
-    onPageChanged: { if (page === 0) { query = ""; searchOpen = false; searchFocus = false; } }
+    onPageChanged: { if (page === 0) { query = ""; searchOpen = false; searchFocus = false; } else { home.inCards = false; home.prompt = false; } }
 
     function openStore() { storeOpen = true; Theme.applyWallpaper(); }
     function openHistory() {
@@ -234,7 +234,7 @@ PanelWindow {
     // ---- actions ----
     function launch(entry, x, y, w, h) {
         if (launching || !entry) return;
-        if (entry.isWelcome === true) return;
+        if (entry.isWelcome === true || entry.isExplore === true) return;
         if (entry.isWall === true) { openStore(); return; }
         if (entry.isLibrary === true) { page = 1; tabsFocus = false; return; }
         launching = true;
@@ -257,7 +257,7 @@ PanelWindow {
     }
     function vert(d) {
         if (tabsFocus) { if (d > 0) { tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false; } }
-        else if (page === 0) { if (d < 0) tabsFocus = true; }
+        else if (page === 0) { if (d > 0) home.down(); else if (!home.up()) tabsFocus = true; }
         else { if (!lib.move(0, d) && d < 0) tabsFocus = true; }
     }
     function choose() {
@@ -274,6 +274,7 @@ PanelWindow {
         searchFocus = false;
         if (query !== "") query = "";
         else if (searchOpen) searchOpen = false;
+        else if (page === 0 && home.inCards) home.up();
         else if (tabsFocus) tabsFocus = false;
         else if (page === 1) page = 0;
         else Desk.summoned = false;
@@ -284,6 +285,7 @@ PanelWindow {
         if (historyOpen) { hist.handleKey(e); return; }
         if (storeOpen) { store.handleKey(e); return; }
         if (launching) { e.accepted = true; return; }
+        if (page === 0 && home.prompt) { home.promptKey(e); return; }
         let handled = true;
         switch (e.key) {
         case Qt.Key_Left: horiz(-1); break;
@@ -317,6 +319,8 @@ PanelWindow {
             icon: win.iconUrl(win.sel)
             shown: win.shown
             wallpaper: win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true)
+            news: win.page === 0 && !!win.sel && win.sel.isExplore === true && home.newsSrc.toString() !== ""
+            newsImg: home.newsSrc
         }
 
         Rectangle {
@@ -367,6 +371,7 @@ PanelWindow {
                 scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
+                onLinkOpened: Desk.summoned = false
             }
 
             LibraryPage {

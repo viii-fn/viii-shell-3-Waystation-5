@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import Quickshell
 import "../core"
 
 // PS5 home row. The focused tile sits at the left margin; the row slides underneath it. The name
@@ -35,12 +36,63 @@ Item {
     readonly property bool special: cur !== null && (cur.isLibrary === true || cur.isWall === true)
     readonly property bool welcome: cur !== null && cur.isWelcome === true
 
+    // ---- viii-explore: the news card row under the Explore tile ----
+    readonly property bool explore: cur !== null && cur.isExplore === true
+    property bool inCards: false
+    property int cardIdx: 0
+    property bool prompt: false          // "Open in browser?" dialog is up
+    property int promptSel: 0            // 0 = Open, 1 = Cancel
+    signal linkOpened()
+    readonly property int newsIdx: inCards ? cardIdx : 0
+    readonly property var newsCur: (explore && News.items.length > 0) ? News.items[Math.min(newsIdx, News.items.length - 1)] : null
+    readonly property url newsSrc: newsCur ? News.src(newsCur.img) : ""
+
+    function down() {                    // from the Explore tile into the cards
+        if (!explore || inCards || News.items.length === 0) return false;
+        cardIdx = 0;
+        inCards = true;
+        return true;
+    }
+    function up() {                      // from the cards back to the tile
+        if (!inCards) return false;
+        inCards = false;
+        prompt = false;
+        return true;
+    }
+    function clickCard(i) {
+        if (!explore) return;
+        if (inCards && i === cardIdx) { promptSel = 0; prompt = true; }
+        else { inCards = true; cardIdx = i; }
+    }
+    function openCurrent() {
+        const it = newsCur;
+        if (!it) return;
+        const l = String(it.link);
+        if (l.indexOf("https://") !== 0 && l.indexOf("http://") !== 0) return;
+        Quickshell.execDetached(["xdg-open", l]);
+        linkOpened();
+    }
+    function pick(sel) {
+        prompt = false;
+        if (sel === 0) openCurrent();
+    }
+    function promptKey(e) {
+        switch (e.key) {
+        case Qt.Key_Left: promptSel = 0; break;
+        case Qt.Key_Right: promptSel = 1; break;
+        case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: pick(promptSel); break;
+        case Qt.Key_Escape: prompt = false; break;
+        default: break;
+        }
+        e.accepted = true;
+    }
+
     readonly property real topSum: {
         void ScreenTime.revision;
         let m = 0;
         for (let i = 0; i < entries.length; i++) {
             const e = entries[i];
-            if (e && e.isLibrary !== true && e.isWelcome !== true) m = Math.max(m, ScreenTime.sum(e, 7));
+            if (e && e.isLibrary !== true && e.isWelcome !== true && e.isExplore !== true) m = Math.max(m, ScreenTime.sum(e, 7));
         }
         return m;
     }
@@ -92,9 +144,15 @@ Item {
         }
     }
 
-    onCurrentChanged: { f = current; infoAnim.restart(); }
+    onCurrentChanged: { f = current; infoAnim.restart(); inCards = false; prompt = false; cardIdx = 0; }
 
     function move(dir) {
+        if (inCards) {
+            const m = Math.max(0, Math.min(News.items.length - 1, cardIdx + dir));
+            if (m === cardIdx) return false;
+            cardIdx = m;
+            return true;
+        }
         const n = Math.max(0, Math.min(entries.length - 1, current + dir));
         if (n === current) return false;
         current = n;
@@ -104,8 +162,15 @@ Item {
         for (let i = 0; i < entries.length; i++) if (entries[i] && entries[i].isWelcome === true) return i;
         return 0;
     }
-    function reset() { animateF = false; current = startIndex(); f = current; animateF = true; }
-    function activate() { if (cur) launched(cur, padL, rowTop, sel, sel); }
+    function reset() { animateF = false; current = startIndex(); f = current; animateF = true; inCards = false; prompt = false; cardIdx = 0; }
+    function activate() {
+        if (explore) {
+            if (inCards) { promptSel = 0; prompt = true; }
+            else down();
+            return;
+        }
+        if (cur) launched(cur, padL, rowTop, sel, sel);
+    }
     function subtitle(e) {
         if (!e) return "";
         if (e.isWall === true) return "Wallpapers \u00b7 the whole interface follows the one you pick";
@@ -171,7 +236,7 @@ Item {
         y: 410
         width: 760
         height: 170
-        opacity: root.welcome ? 0 : root.infoZ * root.infoIn
+        opacity: (root.welcome || root.explore) ? 0 : root.infoZ * root.infoIn
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
 
@@ -239,9 +304,25 @@ Item {
         y: 584
         entry: root.cur
         topSum: root.topSum
-        opacity: (root.special || root.welcome) ? 0 : root.infoZ * root.infoIn
+        opacity: (root.special || root.welcome || root.explore) ? 0 : root.infoZ * root.infoIn
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
+    }
+
+    // viii-explore: Linux + PlayStation news, shown while the Explore tile is selected
+    ExplorePage {
+        anchors.fill: parent
+        padL: root.padL
+        shown: root.shown
+        cardsFocus: root.inCards
+        idx: root.newsIdx
+        prompt: root.prompt
+        promptSel: root.promptSel
+        opacity: root.explore ? root.infoZ * root.infoIn : 0
+        visible: opacity > 0.01
+        transform: Translate { x: (1 - root.infoIn) * 18 }
+        onCardClicked: i => root.clickCard(i)
+        onPromptPicked: sel => root.pick(sel)
     }
 
     // Welcome: the PS5 card grid (three columns, tall and small cards alternating)

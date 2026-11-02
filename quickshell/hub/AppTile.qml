@@ -16,6 +16,7 @@ Item {
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
     readonly property bool isWall: entry !== null && entry !== undefined && entry.isWall === true
     readonly property bool isWelcome: entry !== null && entry !== undefined && entry.isWelcome === true
+    readonly property bool isExplore: entry !== null && entry !== undefined && entry.isExplore === true
     readonly property real shade: iconOpacity * (1 - 0.10 * dim)
 
     readonly property var pal: {
@@ -24,7 +25,7 @@ Item {
     }
 
     readonly property string src: {
-        if (!entry || isLib || isWall || isWelcome) return "";
+        if (!entry || isLib || isWall || isWelcome || isExplore) return "";
         const p = Apps.iconPath(entry);
         if (!p) return "";
         return p.charAt(0) === "/" ? "file://" + p : p;
@@ -67,7 +68,7 @@ Item {
     // monogram while the icon is missing / loading
     Txt {
         anchors.centerIn: parent
-        visible: !root.isLib && !root.isWall && !root.isWelcome && img.status !== Image.Ready
+        visible: !root.isLib && !root.isWall && !root.isWelcome && !root.isExplore && img.status !== Image.Ready
         opacity: root.shade
         text: root.entry && root.entry.name ? String(root.entry.name).charAt(0).toUpperCase() : "?"
         font.pixelSize: Math.min(root.width, root.height) * 0.46
@@ -110,6 +111,40 @@ Item {
                 PathSvg {
                     path: "M11.39 0.605 C10.376 3.092 9.764 4.72 8.635 7.132 C9.328 7.866 10.178 8.721 11.558 9.686 C10.074 9.076 9.062 8.462 8.306 7.826 C6.86 10.842 4.596 15.138 0 23.395 C3.612 21.31 6.412 20.025 9.021 19.533 A6.61 6.61 0 0 1 8.85 17.986 L8.853 17.871 C8.911 15.556 10.114 13.776 11.54 13.898 C12.966 14.018 14.074 15.994 14.018 18.307 A6.52 6.52 0 0 1 13.872 19.55 C16.452 20.055 19.247 21.335 22.834 23.407 C22.129 22.112 21.502 20.944 20.899 19.827 C19.952 19.093 18.965 18.139 16.952 17.134 C18.336 17.494 19.328 17.909 20.102 18.374 C13.03 7.857 12.39 5.964 11.39 0.605 Z"
                 }
+            }
+        }
+    }
+
+    // Explore glyph: a compass (ring and needle), vector shapes, only created on the Explore tile
+    Loader {
+        anchors.centerIn: parent
+        active: root.isExplore
+        opacity: root.shade
+        scale: Math.min(root.width, root.height) * 0.52 / 24
+        sourceComponent: Shape {
+            width: 24; height: 24
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeWidth: 1.8
+                strokeColor: Theme.fg
+                fillColor: "transparent"
+                PathAngleArc { centerX: 12; centerY: 12; radiusX: 10.4; radiusY: 10.4; startAngle: 0; sweepAngle: 360 }
+            }
+            ShapePath {
+                strokeWidth: -1
+                fillColor: Theme.fg
+                startX: 17.2; startY: 6.8
+                PathLine { x: 13.5; y: 13.5 }
+                PathLine { x: 10.5; y: 10.5 }
+                PathLine { x: 17.2; y: 6.8 }
+            }
+            ShapePath {
+                strokeWidth: -1
+                fillColor: Qt.alpha(Theme.fg, 0.45)
+                startX: 6.8; startY: 17.2
+                PathLine { x: 10.5; y: 10.5 }
+                PathLine { x: 13.5; y: 13.5 }
+                PathLine { x: 6.8; y: 17.2 }
             }
         }
     }

@@ -9,6 +9,8 @@ Item {
     property url icon: ""
     property bool shown: true
     property bool wallpaper: false
+    property bool news: false
+    property url newsImg: ""
     property real drift: 0
 
     Rectangle {
@@ -78,6 +80,34 @@ Item {
         }
         // light dim so tiles and text stay readable on bright wallpapers
         Rectangle { anchors.fill: parent; color: Qt.alpha(Theme.deep, 0.28) }
+    }
+
+    // viii-explore: full-bleed picture of the selected news item (Explore tile). Unloaded when not shown (2 GB RAM).
+    Item {
+        id: newsLayer
+        anchors.fill: parent
+        opacity: (root.news && nImg.status === Image.Ready) ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.soft } }
+        Image {
+            id: nImg
+            anchors.fill: parent
+            source: (root.news || newsLayer.opacity > 0.01) ? root.newsImg : ""
+            sourceSize.width: Math.min(1920, Math.max(1366, Math.round(root.width)))
+            fillMode: Image.PreserveAspectCrop
+            smooth: true
+            asynchronous: true
+        }
+        // dim the whole picture a little, and darken the left side where the text sits
+        Rectangle { anchors.fill: parent; color: Qt.alpha(Theme.deep, 0.30) }
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.70) }
+                GradientStop { position: 0.65; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.0) }
+            }
+        }
     }
 
     // ghost of the selected app's icon

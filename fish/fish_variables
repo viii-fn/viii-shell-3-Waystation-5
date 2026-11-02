@@ -1,19 +1,19 @@
 # This file contains fish universal variable definitions.
 # VERSION: 3.0
 SETUVAR --export EDITOR:micro
-SETUVAR fish_color_autosuggestion:\x2390909a
-SETUVAR fish_color_command:\x23b7c4ff
-SETUVAR fish_color_comment:\x2390909a
-SETUVAR fish_color_end:\x23c2c5dd
+SETUVAR fish_color_autosuggestion:\x238e9099
+SETUVAR fish_color_command:\x23aec6ff
+SETUVAR fish_color_comment:\x238e9099
+SETUVAR fish_color_end:\x23bfc6dc
 SETUVAR fish_color_error:\x23ffb4ab
-SETUVAR fish_color_escape:\x23c2c5dd
-SETUVAR fish_color_normal:\x23e3e1e9
-SETUVAR fish_color_operator:\x23c2c5dd
-SETUVAR fish_color_param:\x23c6c5d0
-SETUVAR fish_color_quote:\x23e4bada
-SETUVAR fish_color_search_match:\x2d\x2dbackground\x3d\x23364479
-SETUVAR fish_color_selection:\x2d\x2dbackground\x3d\x23364479
-SETUVAR fish_pager_color_completion:\x23e3e1e9
-SETUVAR fish_pager_color_description:\x2390909a
-SETUVAR fish_pager_color_prefix:\x23b7c4ff
-SETUVAR fish_pager_color_progress:\x2390909a
+SETUVAR fish_color_escape:\x23bfc6dc
+SETUVAR fish_color_normal:\x23e2e2e9
+SETUVAR fish_color_operator:\x23bfc6dc
+SETUVAR fish_color_param:\x23c5c6d0
+SETUVAR fish_color_quote:\x23dfbbde
+SETUVAR fish_color_search_match:\x2d\x2dbackground\x3d\x232c4678
+SETUVAR fish_color_selection:\x2d\x2dbackground\x3d\x232c4678
+SETUVAR fish_pager_color_completion:\x23e2e2e9
+SETUVAR fish_pager_color_description:\x238e9099
+SETUVAR fish_pager_color_prefix:\x23aec6ff
+SETUVAR fish_pager_color_progress:\x238e9099
