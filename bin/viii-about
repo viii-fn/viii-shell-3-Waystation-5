@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""viii-about KEY DESKTOP_ID NAME [COMMENT]: a short description of an app.
+
+Matches the app to its pacman package, then finds its Wikipedia article by searching with the package
+description (so ambiguous names such as Zed, Micro or Thunar do not land on the wrong page).
+Writes ~/.cache/viii/about/KEY.json. Exit 0 = written; 1 = network unreachable (nothing written, retry later)."""
+import json, os, re, subprocess, sys, urllib.error, urllib.parse, urllib.request
+
+HOME = os.path.expanduser("~")
+DIR = HOME + "/.cache/viii/about"
+SOFT = re.compile(r"software|application|browser|editor|emulator|player|program|client|shell|terminal|"
+                  r"manager|launcher|utility|suite|framework|library|engine|environment|compositor|"
+                  r"server|tool|viewer|reader|messenger|\bapp\b|\bIDE\b", re.I)
+
+
+def get(url, timeout=8):
+    req = urllib.request.Request(url, headers={"User-Agent": "viii-shell/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
+def run(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=6).stdout
+    except Exception:
+        return ""
+
+
+def pacman_info(desktop_id):
+    d = desktop_id if desktop_id.endswith(".desktop") else desktop_id + ".desktop"
+    path = "/usr/share/applications/" + d
+    if not os.path.exists(path):
+        return None
+    out = run(["pacman", "-Qoq", path]).strip().splitlines()
+    if not out:
+        return None
+    pkg = out[0].strip()
+    info = {}
+    for line in run(["pacman", "-Qi", pkg]).splitlines():
+        m = re.match(r"^([A-Za-z][A-Za-z ]*?)\s*:\s*(.*)$", line)
+        if m and m.group(1) not in info:
+            info[m.group(1)] = m.group(2).strip()
+    return {"pkg": pkg, "desc": info.get("Description", ""), "version": info.get("Version", "")}
+
+
+def wiki_title(name, pkg, desc):
+    words = " ".join(desc.split()[:6])
+    for q in (("%s %s" % (name, words)).strip(), name + " software"):
+        j = get("https://en.wikipedia.org/w/rest.php/v1/search/page?" + urllib.parse.urlencode({"q": q, "limit": 6}))
+        for p in j.get("pages", []):
+            title = p.get("title", "")
+            text = (p.get("description") or "") + " " + (p.get("excerpt") or "")
+            if not SOFT.search(text):
+                continue
+            low = title.lower()
+            if name.lower() in low or (pkg and pkg.lower() in low):
+                return title
+    return None
+
+
+def trim(text, limit=260):
+    text = re.sub(r"\s+", " ", text).strip()
+    out = ""
+    for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", text):
+        if out and len(out) + len(s) + 1 > limit:
+            break
+        out = (out + " " + s).strip()
+        if len(out) >= 150:
+            break
+    if len(out) > limit:
+        out = out[:limit - 1].rstrip() + "\u2026"
+    return out
+
+
+def summary(title):
+    j = get("https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(title.replace(" ", "_"), safe=""))
+    return trim(j.get("extract", ""))
+
+
+def selftest():
+    t = trim("Firefox is a web browser developed by Mozilla. It is free software. " + "Extra sentence here. " * 30)
+    assert 40 < len(t) <= 260 and t.startswith("Firefox is a web browser"), t
+    assert trim("A" * 400)[-1] == "\u2026"
+    assert SOFT.search("web browser") and not SOFT.search("Greek island")
+    print("selftest ok")
+
+
+def main():
+    if "--selftest" in sys.argv:
+        return selftest()
+    if len(sys.argv) < 4:
+        sys.exit("usage: viii-about KEY DESKTOP_ID NAME [COMMENT]")
+    key, did, name = sys.argv[1], sys.argv[2], sys.argv[3]
+    comment = sys.argv[4] if len(sys.argv) > 4 else ""
+    info = pacman_info(did) or {"pkg": "", "desc": "", "version": ""}
+    out = {"key": key, "title": name, "text": "", "source": "", "pkg": info["pkg"], "version": info["version"]}
+    try:
+        title = wiki_title(name, info["pkg"], info["desc"])
+        text = summary(title) if title else ""
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+        print("about failed:", e, file=sys.stderr)
+        sys.exit(1)
+    if text:
+        out.update(title=title, text=text, source="Wikipedia")
+    elif info["desc"]:
+        out.update(text=info["desc"], source="pacman")
+    elif comment:
+        out.update(text=comment, source="desktop entry")
+    os.makedirs(DIR, exist_ok=True)
+    tmp = "%s/%s.json.tmp" % (DIR, key)
+    with open(tmp, "w") as f:
+        json.dump(out, f)
+    os.replace(tmp, "%s/%s.json" % (DIR, key))
+
+
+if __name__ == "__main__":
+    main()

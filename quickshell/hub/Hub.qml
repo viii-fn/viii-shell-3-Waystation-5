@@ -304,7 +304,7 @@ PanelWindow {
             anchors.fill: parent
             icon: win.iconUrl(win.sel)
             shown: win.shown
-            wallpaper: win.page === 0 && !!win.sel && win.sel.isWall === true
+            wallpaper: win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true)
         }
 
         Rectangle {

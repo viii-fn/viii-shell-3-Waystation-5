@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""viii-weather: current weather + the next hours (Open-Meteo, no API key) -> ~/.cache/viii/weather.json
+
+Location: ~/.config/viii/location ("lat,lon" or "lat,lon,Place name") overrides everything;
+otherwise an IP lookup, remembered in the cache for a day.
+Exit 0 = cache written, 1 = failed (the old cache is left alone)."""
+import json, os, sys, time, urllib.parse, urllib.request
+
+HOME = os.path.expanduser("~")
+OUT = HOME + "/.cache/viii/weather.json"
+CFG = HOME + "/.config/viii/location"
+
+
+def get(url, timeout=8):
+    req = urllib.request.Request(url, headers={"User-Agent": "viii-shell/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
+def read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def configured():
+    try:
+        parts = [s.strip() for s in open(CFG).read().strip().split(",")]
+        return float(parts[0]), float(parts[1]), (parts[2] if len(parts) > 2 else "")
+    except Exception:
+        return None
+
+
+def ip_location():
+    sources = [
+        ("https://ipapi.co/json/", lambda j: (j["latitude"], j["longitude"], j.get("city", ""))),
+        ("https://ipwho.is/", lambda j: (j["latitude"], j["longitude"], j.get("city", ""))),
+        ("http://ip-api.com/json/", lambda j: (j["lat"], j["lon"], j.get("city", ""))),
+    ]
+    for url, pick in sources:
+        try:
+            lat, lon, city = pick(get(url, 6))
+            return float(lat), float(lon), city or ""
+        except Exception:
+            continue
+    return None
+
+
+def locate(prev, now):
+    """-> (lat, lon, place, loc_ts) or None"""
+    c = configured()
+    if c:
+        return c[0], c[1], c[2], now
+    have = prev and prev.get("lat") is not None
+    if have and now - prev.get("loc_ts", 0) < 86400:
+        return prev["lat"], prev["lon"], prev.get("place", ""), prev.get("loc_ts", now)
+    ip = ip_location()
+    if ip:
+        return ip[0], ip[1], ip[2], now
+    if have:
+        return prev["lat"], prev["lon"], prev.get("place", ""), prev.get("loc_ts", 0)
+    return None
+
+
+def forecast(lat, lon):
+    q = urllib.parse.urlencode({
+        "latitude": lat, "longitude": lon,
+        "current": "temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m",
+        "hourly": "temperature_2m,weather_code",
+        "daily": "temperature_2m_max,temperature_2m_min",
+        "timezone": "auto", "forecast_days": 2})
+    return get("https://api.open-meteo.com/v1/forecast?" + q)
+
+
+def build(w, lat, lon, place, now, loc_ts):
+    cur, hr, day = w["current"], w["hourly"], w["daily"]
+    times = hr["time"]
+    ct = cur["time"][:13] + ":00"
+    start = next((i for i, t in enumerate(times) if t > ct), len(times))
+    hours = []
+    for k in range(5):
+        i = start + 2 * k
+        if i >= len(times):
+            break
+        hours.append({"h": int(times[i][11:13]), "t": round(hr["temperature_2m"][i]),
+                      "code": int(hr["weather_code"][i])})
+    return {"ts": now, "lat": lat, "lon": lon, "loc_ts": loc_ts, "place": place,
+            "temp": round(cur["temperature_2m"]), "feels": round(cur["apparent_temperature"]),
+            "code": int(cur["weather_code"]), "day": bool(cur["is_day"]),
+            "wind": round(cur["wind_speed_10m"]),
+            "hi": round(day["temperature_2m_max"][0]), "lo": round(day["temperature_2m_min"][0]),
+            "hours": hours}
+
+
+def selftest():
+    times = ["2026-11-02T%02d:00" % h for h in range(24)] + ["2026-11-03T%02d:00" % h for h in range(24)]
+    w = {"current": {"time": "2026-11-02T07:15", "temperature_2m": 26.4, "apparent_temperature": 30.2,
+                     "weather_code": 3, "is_day": 1, "wind_speed_10m": 9.6},
+         "hourly": {"time": times, "temperature_2m": [20 + (i % 24) * 0.5 for i in range(48)],
+                    "weather_code": [3] * 48},
+         "daily": {"temperature_2m_max": [31.2, 30], "temperature_2m_min": [23.4, 23]}}
+    d = build(w, 4.8, 7.0, "Port Harcourt", 1000, 1000)
+    assert d["temp"] == 26 and d["feels"] == 30 and d["day"] is True and d["hi"] == 31 and d["lo"] == 23, d
+    assert [h["h"] for h in d["hours"]] == [8, 10, 12, 14, 16], d["hours"]
+    late = dict(w, current=dict(w["current"], time="2026-11-02T23:30"))
+    d2 = build(late, 0, 0, "", 1, 1)
+    assert [h["h"] for h in d2["hours"]] == [0, 2, 4, 6, 8], d2["hours"]
+    print("selftest ok")
+
+
+def main():
+    if "--selftest" in sys.argv:
+        return selftest()
+    now = int(time.time())
+    prev = read_json(OUT)
+    loc = locate(prev, now)
+    if not loc:
+        print("no location (no network, no ~/.config/viii/location)", file=sys.stderr)
+        sys.exit(1)
+    lat, lon, place, loc_ts = loc
+    try:
+        data = build(forecast(lat, lon), lat, lon, place, now, loc_ts)
+    except Exception as e:
+        print("weather failed:", e, file=sys.stderr)
+        sys.exit(1)
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    tmp = OUT + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, OUT)
+
+
+if __name__ == "__main__":
+    main()

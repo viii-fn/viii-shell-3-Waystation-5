@@ -27,6 +27,8 @@ link "$proj/quickshell"       "$HOME/.config/quickshell/viii"
 link "$proj/bin/viii"         "$HOME/.local/bin/viii"
 link "$proj/bin/viii-palette" "$HOME/.local/bin/viii-palette"
 link "$proj/bin/viii-theme"   "$HOME/.local/bin/viii-theme"
+link "$proj/bin/viii-weather" "$HOME/.local/bin/viii-weather"
+link "$proj/bin/viii-about"   "$HOME/.local/bin/viii-about"
 
 missing=()
 for c in quickshell matugen resvg magick hyprctl brightnessctl nmcli hyprlock; do

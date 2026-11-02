@@ -246,6 +246,7 @@ Item {
 
     // Welcome: the PS5 card grid (three columns, tall and small cards alternating)
     WelcomeGrid {
+        shown: root.shown                     // welcome-data: only fetch/animate while the hub is on screen
         x: root.padL
         y: 376
         opacity: root.welcome ? root.infoZ * root.infoIn : 0
