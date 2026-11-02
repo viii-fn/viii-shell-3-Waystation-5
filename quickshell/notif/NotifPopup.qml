@@ -1,3 +1,4 @@
+// viii-notif-v2
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
@@ -5,15 +6,17 @@ import Quickshell.Hyprland
 import "../core"
 import "../hub"
 
+// Notification pop-up, PS5 style: a glass card that slides in from the top-right corner (that is where the PS5
+// puts its pop-ups), round icon on the left, bold title, dim text under it. Click-through, no keyboard focus.
 PanelWindow {
     id: win
 
     readonly property real s: screen ? Math.max(0.7, Math.min(screen.width / 1366, screen.height / 768)) : 1
 
-    anchors { top: true }
-    margins { top: Math.round(20 * win.s) }
-    implicitWidth: Math.ceil(460 * win.s)
-    implicitHeight: Math.ceil(130 * win.s)
+    anchors { top: true; right: true }
+    margins { top: Math.round(26 * win.s); right: Math.round(30 * win.s) }
+    implicitWidth: Math.ceil(450 * win.s)
+    implicitHeight: Math.ceil(150 * win.s)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     mask: Region {}
@@ -25,11 +28,12 @@ PanelWindow {
     readonly property bool isFocusedMon: fm ? fm.name === screen.name : true
     readonly property var e: Notifs.current
     readonly property bool on: Notifs.shown && isFocusedMon
+    readonly property bool urgent: !!e && e.urgency === 2
 
     property real vis: on ? 1 : 0
     Behavior on vis {
         NumberAnimation {
-            duration: win.on ? 440 : 300
+            duration: win.on ? 460 : 300
             easing.type: Easing.BezierSpline
             easing.bezierCurve: win.on ? Motion.out : Motion.inOut
         }
@@ -38,7 +42,7 @@ PanelWindow {
     property real pulse: 1
     SequentialAnimation {
         id: pulseAnim
-        NumberAnimation { target: win; property: "pulse"; to: 1.03; duration: 120; easing.type: Easing.OutCubic }
+        NumberAnimation { target: win; property: "pulse"; to: 1.025; duration: 120; easing.type: Easing.OutCubic }
         NumberAnimation { target: win; property: "pulse"; to: 1; duration: 260; easing.type: Easing.OutCubic }
     }
     Connections {
@@ -57,40 +61,45 @@ PanelWindow {
 
     Item {
         id: stage
-        width: 460
-        height: 130
+        width: 450
+        height: 150
         scale: win.s
         transformOrigin: Item.TopLeft
 
-        Rectangle {
+        Item {
             id: card
-            width: 420
-            height: Math.max(68, col.implicitHeight + 26)
-            x: (stage.width - width) / 2
-            y: 4 - (1 - win.vis) * 50
-            radius: 14
+            width: 410
+            height: Math.max(84, col.implicitHeight + 34)
+            x: stage.width - width - 4 + (1 - win.vis) * 70
+            y: 6
             opacity: win.vis
-            scale: (0.96 + 0.04 * win.vis) * win.pulse
-            transformOrigin: Item.Top
-            color: Qt.rgba(0.07, 0.078, 0.098, 0.95)
-            border.width: 1
-            border.color: (win.e && win.e.urgency === 2) ? "#ff6b6b" : Qt.rgba(1, 1, 1, 0.16)
+            scale: (0.97 + 0.03 * win.vis) * win.pulse
+            transformOrigin: Item.TopRight
 
+            GlassSlot {
+                anchors.fill: parent
+                radius: 22
+                edge: win.urgent ? Qt.rgba(1, 0.42, 0.42, 0.75) : Qt.rgba(1, 1, 1, 0.08)
+            }
+
+            // round icon disc
             Rectangle {
-                id: tile
-                x: 12
+                id: disc
+                x: 16
                 anchors.verticalCenter: parent.verticalCenter
-                width: 44
-                height: 44
-                radius: 10
-                color: Qt.rgba(1, 1, 1, 0.10)
+                width: 54
+                height: 54
+                radius: 27
+                color: Qt.rgba(1, 1, 1, 0.09)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.12)
 
                 Image {
                     id: img
                     anchors.centerIn: parent
-                    width: 26
-                    height: 26
-                    sourceSize: Qt.size(60, 60)
+                    width: 32
+                    height: 32
+                    sourceSize: Qt.size(64, 64)
                     asynchronous: true
                     fillMode: Image.PreserveAspectFit
                     source: win.iconSrc(win.e)
@@ -100,15 +109,15 @@ PanelWindow {
                     anchors.centerIn: parent
                     visible: !!win.e && win.e.kind === "app" && !img.visible
                     text: ((win.e && (win.e.app || win.e.title)) || "?").charAt(0).toUpperCase()
-                    font.pixelSize: 20
+                    font.pixelSize: 22
                     font.weight: Font.Bold
                 }
                 Canvas {
                     id: bolt
                     anchors.centerIn: parent
-                    width: 12
-                    height: 20
-                    scale: 1.2
+                    width: 16
+                    height: 26
+                    scale: 1.0
                     visible: !!win.e && win.e.kind === "power"
                     property var ent: win.e
                     property color ink: Theme.accent
@@ -146,15 +155,15 @@ PanelWindow {
 
             Column {
                 id: col
-                x: 68
+                x: 86
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 68 - 18
-                spacing: 2
+                width: parent.width - 86 - 22
+                spacing: 3
                 Txt {
                     width: parent.width
                     visible: !!win.e && win.e.kind === "app" && !!win.e.app && win.e.app !== win.e.title
                     text: win.e ? (win.e.app || "") : ""
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                     color: Theme.fgDim
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
@@ -162,7 +171,8 @@ PanelWindow {
                 Txt {
                     width: parent.width
                     text: win.e ? win.e.title : ""
-                    font.pixelSize: 13
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }

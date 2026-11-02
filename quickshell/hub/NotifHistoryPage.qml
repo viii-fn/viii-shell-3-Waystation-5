@@ -1,3 +1,4 @@
+// viii-notif-v2
 import QtQuick
 import Quickshell
 import "../core"
@@ -151,13 +152,7 @@ Item {
             opacity: root.count > 0 ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 220 } }
-            Rectangle {
-                anchors.fill: parent
-                radius: 23
-                color: Theme.glassHi
-                border.width: 1
-                border.color: Theme.glassBorder
-            }
+            GlassSlot { anchors.fill: parent; radius: 23 }
             Rectangle {
                 anchors.fill: parent
                 radius: 23
@@ -196,36 +191,44 @@ Item {
                 required property int index
                 readonly property bool cur: !root.btnFocus && index === root.current
                 readonly property bool power: !!modelData && modelData.kind === "power"
+                readonly property bool urgent: !!modelData && modelData.urgency === 2
                 property real selT: cur ? 1 : 0
                 Behavior on selT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
                 width: list.width
                 height: root.rowH
 
-                Rectangle {
-                    x: 12; y: 5
-                    width: parent.width - 24
-                    height: 74
-                    radius: 16
-                    color: Theme.glass
-                    border.width: 1
-                    border.color: (row.modelData && row.modelData.urgency === 2) ? "#ff6b6b" : Theme.glassBorder
+                // PS5 glass card (same slot as the hub cards)
+                Item {
+                    id: card
+                    x: 14
+                    y: 6
+                    width: parent.width - 28
+                    height: 72
+
+                    GlassSlot {
+                        anchors.fill: parent
+                        radius: 20
+                        edge: row.urgent ? Qt.rgba(1, 0.42, 0.42, 0.75) : Qt.rgba(1, 1, 1, 0.08)
+                    }
 
                     Rectangle {
-                        id: tile
-                        x: 14
+                        id: disc
+                        x: 16
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 54
-                        height: 54
-                        radius: 12
-                        color: Theme.glassHi
+                        width: 52
+                        height: 52
+                        radius: 26
+                        color: Qt.rgba(1, 1, 1, 0.09)
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.12)
 
                         Image {
                             id: ico
                             anchors.centerIn: parent
-                            width: 34
-                            height: 34
-                            sourceSize: Qt.size(68, 68)
+                            width: 32
+                            height: 32
+                            sourceSize: Qt.size(64, 64)
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
                             source: root.iconSrc(row.modelData)
@@ -235,7 +238,7 @@ Item {
                             anchors.centerIn: parent
                             visible: !row.power && !ico.visible
                             text: ((row.modelData && (row.modelData.app || row.modelData.title)) || "?").charAt(0).toUpperCase()
-                            font.pixelSize: 24
+                            font.pixelSize: 22
                             font.weight: Font.Bold
                         }
                         Canvas {
@@ -243,7 +246,6 @@ Item {
                             anchors.centerIn: parent
                             width: 16
                             height: 26
-                            scale: 1.15
                             visible: row.power
                             property bool plug: !!row.modelData && row.modelData.plugged === true
                             property color ink: Theme.accent
@@ -279,9 +281,9 @@ Item {
                     }
 
                     Column {
-                        x: 84
+                        x: 86
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 84 - 170
+                        width: parent.width - 86 - 170
                         spacing: 3
                         Txt {
                             width: parent.width
@@ -310,7 +312,7 @@ Item {
 
                     Txt {
                         anchors.right: parent.right
-                        anchors.rightMargin: 22
+                        anchors.rightMargin: 24
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.modelData ? root.rel(row.modelData.t) : ""
                         font.pixelSize: 14
@@ -318,16 +320,15 @@ Item {
                     }
                 }
 
-                // the single focus highlight
-                Rectangle {
-                    x: 8; y: 2
-                    width: parent.width - 16
-                    height: 80
-                    radius: 20
-                    color: "transparent"
-                    border.width: 3
-                    border.color: Theme.fg
+                // the PS5 selection ring (same as the hub tiles)
+                GlassRing {
+                    x: card.x - 4.5
+                    y: card.y - 4.5
+                    width: card.width + 9
+                    height: card.height + 9
+                    radius: 24.5
                     opacity: row.selT
+                    visible: opacity > 0.01
                 }
 
                 MouseArea {

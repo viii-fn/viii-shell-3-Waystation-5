@@ -13,6 +13,7 @@ Singleton {
 
     property bool summoned: false      // hub forced open over windows (launcher key)
     property bool ccOpen: false        // Control Center open (PS button tap)
+    property real notifSeen: Date.now() // notifications newer than this are "unread" (Control Center bell badge)
     property var empty: ({})           // monitor name -> true when its active workspace has no windows
     property bool psHoldFired: false
     property bool psIsDown: false      // guards against key repeat and double release events
@@ -38,7 +39,7 @@ Singleton {
     function isEmpty(name) { return empty[name] === true; }
 
     function openLibrary() { summoned = true; libraryRequested(); }
-    function openHistory() { summoned = true; wardRequested(); }
+    function openHistory() { notifSeen = Date.now(); summoned = true; wardRequested(); }
     function openShot() { shotRequested(); }
 
     // PS button: bound twice in Hyprland (press, and release). Short press = tap, long press = hold.

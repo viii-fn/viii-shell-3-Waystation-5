@@ -4,6 +4,12 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
+import QtQuick.Shapes
+import Quickshell.Services.Pipewire
+import Quickshell.Services.Mpris
+import Quickshell.Services.UPower
+import Quickshell.Networking
+import Quickshell.Bluetooth
 import "../core"
 import "../hub"
 
@@ -41,7 +47,7 @@ Item {
     readonly property var glyphs: ["", "", "", "", "", "", "", "", "", ""]
     readonly property var fallbacks: ["HOME", "APP", "NOTIF", "WS", "MUSIC", "VOL", "MIC", "BAT", "NET", "PWR"]
 
-    readonly property string mode: idx === 1 ? "windows" : (idx === 3 ? "workspaces" : (idx === 9 ? "power" : ""))
+    readonly property string mode: idx === 1 ? "windows" : (idx === 2 ? "notifs" : (idx === 3 ? "workspaces" : (idx === 8 ? "conns" : (idx === 9 ? "power" : (idx === 4 ? "music" : (idx === 5 ? "volume" : (idx === 6 ? "mic" : (idx === 7 ? "battery" : ""))))))))
 
     readonly property string nfFamily: {
         const f = Qt.fontFamilies();
@@ -68,7 +74,7 @@ Item {
         return out.slice(0, 8);
     }
     readonly property var wins: winList()
-    readonly property int count: mode === "windows" ? wins.length : (mode === "workspaces" ? wsIds.length : (mode === "power" ? powerItems.length : 0))
+    readonly property int count: mode === "windows" ? wins.length : (mode === "workspaces" ? wsIds.length : (mode === "power" ? powerItems.length : (mode === "notifs" ? nList.length + 1 : (mode === "conns" ? 3 : (mode === "music" ? mpPlayers.length : (mode === "volume" ? vSinks.length : (mode === "mic" ? (micNode ? 1 : 0) : (mode === "battery" ? battList.length + 1 : 0))))))))
     onCountChanged: {
         if (count === 0) inCards = false;
         else if (cardIdx >= count) cardIdx = count - 1;
@@ -129,12 +135,23 @@ Item {
             switchWorkspace(wsOrder[cardIdx]);
         } else if (mode === "power") {
             runPower();
+        } else if (mode === "notifs") {
+            openHistoryFromCc();
+        } else if (mode === "conns") {
+            connToggle(cardIdx);
+        } else if (mode === "music") {
+            mpToggle();
+        } else if (mode === "volume") {
+            volDefault();
+        } else if (mode === "mic") {
+            micToggle();
         }
     }
 
     function choose() {
         if (inCards) activateCard();
         else if (idx === 0) goHome();
+        else if (idx === 6) micToggle();      // viii-cc-media: Enter on the mic icon mutes it
         else enterCards();
     }
 
@@ -146,6 +163,12 @@ Item {
 
     function key(e) {
         let ok = true;
+        if (keyExtra(e)) return;              // viii-cc-media
+        if (inCards && mode === "notifs") {      // viii-cc-notif-conn: the list is vertical, Up/Down walk it
+            if (e.key === Qt.Key_Up) { cardIdx = Math.max(0, cardIdx - 1); e.accepted = true; return; }
+            if (e.key === Qt.Key_Down) { if (cardIdx >= count - 1) inCards = false; else cardIdx = cardIdx + 1; e.accepted = true; return; }
+            if (e.key === Qt.Key_Left || e.key === Qt.Key_Right) { e.accepted = true; return; }
+        }
         switch (e.key) {
         case Qt.Key_Left:
             if (inCards) { cardIdx = Math.max(0, cardIdx - 1); armed = ""; }
@@ -355,6 +378,310 @@ Item {
     Loader { anchors.fill: parent; active: root.mode === "windows"; sourceComponent: winRowComp }
     Loader { anchors.fill: parent; active: root.mode === "workspaces"; sourceComponent: wsRowComp }
     Loader { anchors.fill: parent; active: root.mode === "power"; sourceComponent: powerRowComp }
+
+    // viii-cc-notif-conn: Notifications (strip 2) and Connections (strip 8)
+    Loader { anchors.fill: parent; active: root.mode === "notifs"; sourceComponent: notifComp }
+    Loader { anchors.fill: parent; active: root.mode === "conns"; sourceComponent: connComp }
+
+    Component {
+        id: notifComp
+        Item {
+            id: nRoot
+            readonly property int nRows: Math.max(1, root.nList.length)
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Item {
+                id: np
+                width: 440
+                height: 82 + nRoot.nRows * 62
+                x: Math.max(root.padX, root.width / 2 + (2 - 4.5) * root.stepX - width / 2)
+                y: root.rowBottom - height + (1 - root.vis) * 40
+                opacity: root.vis
+
+                GlassSlot { anchors.fill: parent; radius: 22 }
+
+                Txt {
+                    visible: root.nList.length === 0
+                    x: 30
+                    y: 12 + 21
+                    text: "No notifications yet"
+                    font.pixelSize: 17
+                    color: Theme.fgDim
+                }
+
+                Repeater {
+                    model: root.nList
+                    delegate: Item {
+                        id: nr
+                        required property var modelData
+                        required property int index
+                        readonly property bool cur: root.inCards && root.cardIdx === index
+                        readonly property bool power: !!modelData && modelData.kind === "power"
+                        property real selT: cur ? 1 : 0
+                        Behavior on selT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                        x: 12
+                        y: 12 + index * 62
+                        width: np.width - 24
+                        height: 62
+
+                        Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 14; color: Qt.rgba(1, 1, 1, 0.07); opacity: nr.selT }
+                        GlassRing { anchors.fill: parent; anchors.margins: -1; radius: 17; opacity: nr.selT; visible: opacity > 0.01 }
+
+                        Rectangle {
+                            id: nDisc
+                            x: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 42
+                            height: 42
+                            radius: 21
+                            color: Qt.rgba(1, 1, 1, 0.09)
+                            border.width: 1
+                            border.color: Qt.rgba(1, 1, 1, 0.12)
+                            Image {
+                                id: nImg
+                                anchors.centerIn: parent
+                                width: 26
+                                height: 26
+                                sourceSize: Qt.size(52, 52)
+                                asynchronous: true
+                                fillMode: Image.PreserveAspectFit
+                                source: root.nIcon(nr.modelData)
+                                visible: source !== "" && status === Image.Ready
+                            }
+                            Txt {
+                                anchors.centerIn: parent
+                                visible: !nr.power && !nImg.visible
+                                text: ((nr.modelData && (nr.modelData.app || nr.modelData.title)) || "?").charAt(0).toUpperCase()
+                                font.pixelSize: 18
+                                font.weight: Font.Bold
+                            }
+                            Canvas {
+                                id: nBolt
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 26
+                                scale: 0.8
+                                visible: nr.power
+                                property bool plug: !!nr.modelData && nr.modelData.plugged === true
+                                property color ink: Theme.accent
+                                property color dim: Theme.fgDim
+                                onPlugChanged: requestPaint()
+                                onInkChanged: requestPaint()
+                                onDimChanged: requestPaint()
+                                Component.onCompleted: requestPaint()
+                                onPaint: {
+                                    const ctx = getContext("2d");
+                                    ctx.reset();
+                                    ctx.fillStyle = nBolt.plug ? nBolt.ink : nBolt.dim;
+                                    ctx.beginPath();
+                                    ctx.moveTo(10.4, 0);
+                                    ctx.lineTo(0, 15.2);
+                                    ctx.lineTo(7.4, 15.2);
+                                    ctx.lineTo(5.1, 25.6);
+                                    ctx.lineTo(16, 9.6);
+                                    ctx.lineTo(8.6, 9.6);
+                                    ctx.closePath();
+                                    ctx.fill();
+                                }
+                            }
+                        }
+
+                        Column {
+                            x: 68
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 68 - 66
+                            spacing: 2
+                            Txt {
+                                width: parent.width
+                                text: nr.modelData ? nr.modelData.title : ""
+                                font.pixelSize: 15
+                                font.weight: Font.Bold
+                                textFormat: Text.PlainText
+                            }
+                            Txt {
+                                width: parent.width
+                                visible: text !== ""
+                                text: root.nSub(nr.modelData)
+                                font.pixelSize: 12
+                                color: Theme.fgDim
+                                textFormat: Text.PlainText
+                            }
+                        }
+
+                        Txt {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 18
+                            y: 14
+                            text: nr.modelData ? root.relT(nr.modelData.t) : ""
+                            font.pixelSize: 12
+                            color: Theme.fgDim
+                        }
+                        Rectangle {
+                            visible: !!nr.modelData && nr.modelData.t > root.seenAtOpen
+                            anchors.right: parent.right
+                            anchors.rightMargin: 18
+                            y: 36
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            color: Theme.accent
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: { root.cardIdx = nr.index; root.inCards = true; root.activateCard(); }
+                        }
+                    }
+                }
+
+                // "Open full history" row
+                Item {
+                    id: hr
+                    readonly property int hIdx: root.nList.length
+                    readonly property bool cur: root.inCards && root.cardIdx === hIdx
+                    property real selT: cur ? 1 : 0
+                    Behavior on selT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                    x: 12
+                    y: 12 + nRoot.nRows * 62 + 6
+                    width: np.width - 24
+                    height: 52
+
+                    Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 14; color: Qt.rgba(1, 1, 1, 0.07); opacity: hr.selT }
+                    GlassRing { anchors.fill: parent; anchors.margins: -1; radius: 17; opacity: hr.selT; visible: opacity > 0.01 }
+                    Txt {
+                        x: 20
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Open full history"
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                    }
+                    Txt {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 52
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (Notifs.history ? Notifs.history.length : 0) + " saved"
+                        font.pixelSize: 13
+                        color: Theme.fgDim
+                    }
+                    Txt {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 22
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\u203a"
+                        font.pixelSize: 26
+                        color: Theme.fgDim
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { root.cardIdx = hr.hIdx; root.inCards = true; root.activateCard(); }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: connComp
+        Item {
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Repeater {
+                model: 3
+                delegate: Item {
+                    id: cn
+                    required property int index
+                    readonly property bool cur: root.inCards && root.cardIdx === index
+                    readonly property bool lit: index === 0 ? (root.wifiOnNow && !root.wifiBlocked) : (index === 1 ? root.btOnNow : root.usbList.length > 0)
+
+                    width: root.smW
+                    height: root.smH
+                    x: root.connX + index * (root.smW + root.gap)
+                    y: root.rowBottom - height + (1 - root.vis) * 40
+                    opacity: root.vis
+                    scale: cur ? 1.04 : 1
+                    Behavior on scale {
+                        NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+                    }
+
+                    GlassSlot { anchors.fill: parent; radius: 18 }
+
+                    Rectangle {
+                        x: 22
+                        y: 22
+                        width: 64
+                        height: 64
+                        radius: 32
+                        color: cn.lit ? Theme.fg : Qt.rgba(1, 1, 1, 0.10)
+                        Behavior on color { ColorAnimation { duration: 200 } }
+                        Txt {
+                            anchors.centerIn: parent
+                            text: root.nfFamily !== "" ? root.connGlyphs[cn.index] : root.connFallbacks[cn.index]
+                            font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
+                            font.pixelSize: root.nfFamily !== "" ? 28 : 12
+                            font.weight: Font.Bold
+                            color: cn.lit ? Theme.deep : Theme.fgDim
+                            elide: Text.ElideNone
+                        }
+                    }
+
+                    Txt {
+                        x: 22
+                        y: 104
+                        width: parent.width - 44
+                        text: root.connTitles[cn.index]
+                        font.pixelSize: 19
+                        font.weight: Font.DemiBold
+                        color: Theme.fgDim
+                    }
+                    Txt {
+                        x: 22
+                        y: 130
+                        width: parent.width - 44
+                        text: root.connBig(cn.index)
+                        font.pixelSize: 30
+                        font.weight: Font.Bold
+                    }
+                    Txt {
+                        x: 22
+                        y: 178
+                        width: parent.width - 44
+                        text: root.connSub(cn.index)
+                        font.pixelSize: 14
+                        color: Theme.fgDim
+                        wrapMode: Text.NoWrap
+                        maximumLineCount: 4
+                        lineHeight: 1.15
+                        elide: Text.ElideRight
+                        textFormat: Text.PlainText
+                    }
+
+                    GlassRing {
+                        anchors.fill: parent
+                        anchors.margins: -4.5
+                        radius: 22
+                        opacity: cn.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+
+                    Txt {
+                        x: 2
+                        y: cn.height + 14
+                        text: root.connLabel(cn.index)
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                        opacity: cn.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { root.cardIdx = cn.index; root.inCards = true; root.activateCard(); }
+                    }
+                }
+            }
+        }
+    }
 
     // viii-cc-home: Home selected -> the Welcome cards (same grid as the hub's Welcome tile). Enter / click = hub root.
     Loader { anchors.fill: parent; active: root.idx === 0; sourceComponent: homeComp }
@@ -775,6 +1102,861 @@ Item {
         }
     }
 
+    // ---- viii-cc-notif-conn: Notifications + Connections panels -----------------------------------------------
+    // Notifications: the last 5 entries of Notifs.history in one glass panel above the bell, plus "Open full history".
+    readonly property var nList: (Notifs.history || []).slice(0, 5)
+    property real seenAtOpen: 0                     // Desk.notifSeen as it was when the Control Center opened
+    Component.onCompleted: seenAtOpen = Desk.notifSeen
+    readonly property int unread: {
+        const h = Notifs.history || [];
+        let n = 0;
+        for (let i = 0; i < h.length; i++) if (h[i].t > Desk.notifSeen) n++;
+        return n;
+    }
+    // looking at the panel for a moment marks everything as seen (the dots stay until you leave, via seenAtOpen)
+    Timer { running: root.mode === "notifs"; interval: 1200; onTriggered: Desk.notifSeen = Date.now() }
+    function relT(ts) {
+        const m = Math.floor(Math.max(0, Date.now() - ts) / 60000);
+        if (m < 1) return "Now";
+        if (m < 60) return m + " min";
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + " h";
+        return Math.floor(h / 24) + " d";
+    }
+    function nSub(en) {
+        if (!en) return "";
+        if (en.kind === "app" && en.app && en.app !== en.title) return en.app;
+        return en.body || "";
+    }
+    function nIcon(en) {
+        if (!en || en.kind !== "app" || !en.icon) return "";
+        if (en.icon.charAt(0) === "/") return "file://" + en.icon;
+        if (en.icon.indexOf("file://") === 0) return en.icon;
+        const p = Quickshell.iconPath(en.icon, true);
+        if (!p) return "";
+        return p.charAt(0) === "/" ? "file://" + p : p;
+    }
+    function openHistoryFromCc() {
+        Desk.notifSeen = Date.now();
+        Desk.ccOpen = false;
+        Desk.openHistory();
+    }
+
+    // Connections: Wi-Fi and Bluetooth come from Quickshell (same sources as Settings), USB is read once when the panel opens.
+    readonly property real connX: Math.max(padX, Math.min(width / 2 + 3.5 * stepX - (3 * smW + 2 * gap) / 2, width - padX - (3 * smW + 2 * gap)))
+    readonly property var wifiDev: {
+        const d = Networking.devices ? Networking.devices.values : [];
+        for (let i = 0; i < d.length; i++) if (d[i].type === DeviceType.Wifi) return d[i];
+        return null;
+    }
+    readonly property bool wiredUp: {
+        const d = Networking.devices ? Networking.devices.values : [];
+        for (let i = 0; i < d.length; i++) if (d[i].type === DeviceType.Wired && d[i].connected) return true;
+        return false;
+    }
+    readonly property var wifiNets: wifiDev && wifiDev.networks ? wifiDev.networks.values : []
+    readonly property var wifiActive: {
+        for (let i = 0; i < wifiNets.length; i++) if (wifiNets[i].connected) return wifiNets[i];
+        return null;
+    }
+    readonly property bool wifiOnNow: Networking.wifiEnabled
+    readonly property bool wifiBlocked: !Networking.wifiHardwareEnabled
+    readonly property var btAdapter: Bluetooth.defaultAdapter
+    readonly property bool btOnNow: btAdapter ? btAdapter.enabled : false
+    readonly property var btDevs: btAdapter && btAdapter.devices ? btAdapter.devices.values : []
+    readonly property var btLinked: btDevs.filter(d => d.connected)
+
+    property var usbList: []
+    function usbRefresh() { if (!usbProc.running) usbProc.running = true; }
+    function usbParsed(t) {
+        const out = [];
+        const l = t.split("\n");
+        for (let i = 0; i < l.length; i++) {
+            const s = l[i].trim();
+            if (s === "") continue;
+            const p = s.split("|");
+            out.push({ name: p[0] || "USB device", vendor: p[1] || "" });
+        }
+        usbList = out;
+    }
+    Process {
+        id: usbProc
+        command: ["sh", "-c", 'for d in /sys/bus/usb/devices/*; do [ -f "$d/product" ] || continue; c=$(cat "$d/bDeviceClass" 2>/dev/null); [ "$c" = 09 ] && continue; [ "$c" = e0 ] && continue; r=$(cat "$d/removable" 2>/dev/null); [ "$r" = fixed ] && continue; p=$(cat "$d/product" 2>/dev/null); m=$(cat "$d/manufacturer" 2>/dev/null); echo "$p|$m"; done; true']
+        stdout: StdioCollector { onStreamFinished: root.usbParsed(this.text) }
+    }
+    Connections { target: root; function onModeChanged() { if (root.mode === "conns") root.usbRefresh(); } }
+
+    function connToggle(i) {
+        if (i === 0) {
+            if (wifiBlocked) return;
+            Networking.wifiEnabled = !Networking.wifiEnabled;
+            if (!Networking.wifiEnabled && wifiDev) wifiDev.scannerEnabled = false;
+        } else if (i === 1) {
+            if (btAdapter) btAdapter.enabled = !btAdapter.enabled;
+        } else {
+            usbRefresh();
+        }
+    }
+    function connBig(i) {
+        if (i === 0) return wifiBlocked ? "Blocked" : (wifiOnNow ? "On" : "Off");
+        if (i === 1) return !btAdapter ? "No adapter" : (btOnNow ? "On" : "Off");
+        return usbList.length === 0 ? "None" : String(usbList.length);
+    }
+    function connSub(i) {
+        if (i === 0) {
+            if (!wifiOnNow || wifiBlocked) return "";
+            if (wifiActive) return wifiActive.name + "\n" + Math.round(wifiActive.signalStrength * 100) + "% signal";
+            return wiredUp ? "Ethernet connected" : "Not connected";
+        }
+        if (i === 1) {
+            if (!btOnNow) return "";
+            if (btLinked.length === 0) return "No devices connected";
+            const n = [];
+            for (let k = 0; k < btLinked.length && k < 3; k++) n.push(btLinked[k].name || btLinked[k].deviceName || "Device");
+            return n.join("\n") + (btLinked.length > 3 ? "\n+" + (btLinked.length - 3) + " more" : "");
+        }
+        if (usbList.length === 0) return "Nothing plugged in";
+        const u = [];
+        for (let k = 0; k < usbList.length && k < 3; k++) u.push(usbList[k].name);
+        return u.join("\n") + (usbList.length > 3 ? "\n+" + (usbList.length - 3) + " more" : "");
+    }
+    function connLabel(i) {
+        if (i === 0) return wifiBlocked ? "" : (wifiOnNow ? "Turn Wi-Fi off" : "Turn Wi-Fi on");
+        if (i === 1) return !btAdapter ? "" : (btOnNow ? "Turn Bluetooth off" : "Turn Bluetooth on");
+        return "Refresh";
+    }
+    readonly property var connTitles: ["Wi-Fi", "Bluetooth", "USB"]
+    readonly property var connGlyphs: ["\uf1eb", "\uf294", "\uf287"]
+    readonly property var connFallbacks: ["WIFI", "BT", "USB"]
+
+    // viii-cc-media: Music (4), Volume (5), Mic (6) and Battery (7) panels ---------------------------------------
+    // Everything here lives only while the Control Center is open (it is loaded on demand), and nothing polls
+    // except the 1 s position timer, which runs only while the Music panel is showing and something is playing.
+
+    // ---- audio (PipeWire) ----
+    readonly property var sinkNode: Pipewire.defaultAudioSink
+    readonly property var micNode: Pipewire.defaultAudioSource
+    readonly property var vSinks: {
+        const all = Pipewire.nodes ? Pipewire.nodes.values : [];
+        const out = [];
+        for (let i = 0; i < all.length; i++) {
+            const n = all[i];
+            if (n && n.isSink && n.audio && !n.isStream) out.push(n);
+        }
+        return out.slice(0, 6);
+    }
+    // audio.volume / audio.muted read as defaults unless the node is tracked
+    readonly property var pwObjs: {
+        const o = vSinks.slice();
+        if (sinkNode && o.indexOf(sinkNode) < 0) o.push(sinkNode);
+        if (micNode && o.indexOf(micNode) < 0) o.push(micNode);
+        return o;
+    }
+    PwObjectTracker { objects: root.pwObjs }
+
+    readonly property bool spkMuted: !!sinkNode && !!sinkNode.audio && sinkNode.audio.muted
+    readonly property real spkVol: (sinkNode && sinkNode.audio) ? sinkNode.audio.volume : 0
+    readonly property bool micMuted: !!micNode && !!micNode.audio && micNode.audio.muted
+    readonly property real micVol: (micNode && micNode.audio) ? micNode.audio.volume : 0
+
+    function nodeName(n) { return n ? (n.description || n.nickname || n.name || "Device") : ""; }
+    function clamp01(v) { return Math.max(0, Math.min(1, Math.round(v * 100) / 100)); }
+
+    function volStep(d) {
+        const n = vSinks[cardIdx];
+        if (n && n.audio) n.audio.volume = clamp01(n.audio.volume + d);
+    }
+    function volMute() {
+        const n = vSinks[cardIdx];
+        if (n && n.audio) n.audio.muted = !n.audio.muted;
+    }
+    function volDefault() {
+        const n = vSinks[cardIdx];
+        if (n) Pipewire.preferredDefaultAudioSink = n;
+    }
+    function micToggle() { if (micNode && micNode.audio) micNode.audio.muted = !micNode.audio.muted; }
+    function micStep(d) { if (micNode && micNode.audio) micNode.audio.volume = clamp01(micNode.audio.volume + d); }
+
+    // the strip icons follow the state (Volume: muted / low / high, Mic: slashed when muted)
+    function stripGlyph(i) {
+        if (i === 5) return (spkMuted || spkVol <= 0.001) ? "\uf026" : (spkVol < 0.5 ? "\uf027" : "\uf028");
+        if (i === 6) return micMuted ? "\uf131" : "\uf130";
+        return glyphs[i];
+    }
+    function stripName() {
+        if (idx === 5 && sinkNode && sinkNode.audio) return spkMuted ? "Volume \u00b7 Muted" : "Volume \u00b7 " + Math.round(spkVol * 100) + "%";
+        if (idx === 6 && micNode && micNode.audio) return micMuted ? "Mic \u00b7 Muted" : "Mic \u00b7 On";
+        return names[idx];
+    }
+
+    // ---- music (MPRIS) ----
+    readonly property var mpPlayers: {
+        const all = Mpris.players ? Mpris.players.values : [];
+        const on = [], off = [];
+        for (let i = 0; i < all.length; i++) (all[i].isPlaying ? on : off).push(all[i]);
+        return on.concat(off).slice(0, 3);
+    }
+    readonly property real musicX: {
+        const n = Math.max(1, mpPlayers.length);
+        const total = n * bigW + (n - 1) * gap;
+        return Math.max(padX, Math.min(width / 2 - 0.5 * stepX - total / 2, width - padX - total));
+    }
+    function mpToggle() {
+        const p = mpPlayers[cardIdx];
+        if (p && p.canTogglePlaying) p.togglePlaying();
+    }
+    function mpSkip(d) {
+        const p = mpPlayers[cardIdx];
+        if (!p) return;
+        if (d > 0 && p.canGoNext) p.next();
+        else if (d < 0 && p.canGoPrevious) p.previous();
+    }
+    // position does not update on its own: ask for it once a second, only while it can be seen
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.mode === "music" && root.mpPlayers.some(p => p.isPlaying)
+        onTriggered: {
+            for (let i = 0; i < root.mpPlayers.length; i++) {
+                const p = root.mpPlayers[i];
+                if (p && p.isPlaying) { try { p.positionChanged(); } catch (e) {} }
+            }
+        }
+    }
+
+    // ---- battery (UPower, same source as the Welcome cards: percentage is a 0..1 fraction) ----
+    function isChg(d) {
+        return d.state === UPowerDeviceState.Charging || d.state === UPowerDeviceState.FullyCharged || d.state === UPowerDeviceState.PendingCharge;
+    }
+    readonly property var battList: {
+        const out = [];
+        const main = UPower.displayDevice;
+        if (main && main.isPresent) out.push({ name: "Laptop", pct: main.percentage, chg: isChg(main), dev: main });
+        const l = UPower.devices ? UPower.devices.values : [];
+        for (let i = 0; i < l.length; i++) {
+            const d = l[i];
+            if (!d || d === main || d.powerSupply || d.isLaptopBattery || !(d.percentage > 0)) continue;
+            out.push({ name: d.model || "Device", pct: d.percentage, chg: isChg(d), dev: d });
+        }
+        return out.slice(0, 3);
+    }
+    function battSub(b) {
+        if (!b) return "";
+        const d = b.dev;
+        const s = b.chg ? (d.timeToFull > 0 ? d.timeToFull : 0) : (d.timeToEmpty > 0 ? d.timeToEmpty : 0);
+        let t = "";
+        if (s > 0) {
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            t = h > 0 ? h + " h " + m + " min" : m + " min";
+        }
+        if (b.chg) return b.pct >= 0.99 ? "Fully charged" : "Charging" + (t !== "" ? "\n" + t + " to full" : "");
+        return "On battery" + (t !== "" ? "\n" + t + " left" : "");
+    }
+    function battTone(b) { return b.chg ? "#6bdc8b" : (b.pct < 0.15 ? "#e5484d" : Theme.fg); }
+    readonly property real battX: {
+        const n = battList.length + 1;
+        const total = n * smW + (n - 1) * gap;
+        return Math.max(padX, Math.min(width / 2 + 2.5 * stepX - total / 2, width - padX - total));
+    }
+    Connections {
+        target: root
+        function onModeChanged() { if (root.mode === "battery" && Desk.brightness < 0) Desk.briRefresh(); }
+    }
+
+    // keys that differ per panel (called first by key(); returns true when it handled the key)
+    function keyExtra(e) {
+        if (!inCards) return false;
+        const k = e.key;
+        if (mode === "volume") {
+            if (k === Qt.Key_Up) cardIdx = Math.max(0, cardIdx - 1);
+            else if (k === Qt.Key_Down) { if (cardIdx >= count - 1) inCards = false; else cardIdx = cardIdx + 1; }
+            else if (k === Qt.Key_Left) volStep(-0.05);
+            else if (k === Qt.Key_Right) volStep(0.05);
+            else if (k === Qt.Key_M) volMute();
+            else return false;
+        } else if (mode === "mic") {
+            if (k === Qt.Key_Left) micStep(-0.05);
+            else if (k === Qt.Key_Right) micStep(0.05);
+            else if (k === Qt.Key_M) micToggle();
+            else return false;
+        } else if (mode === "music") {
+            if (k === Qt.Key_Up) mpSkip(1);
+            else if (k === Qt.Key_Down) mpSkip(-1);
+            else return false;
+        } else if (mode === "battery" && cardIdx === battList.length) {
+            if (k === Qt.Key_Up) Desk.briStep(5);
+            else if (k === Qt.Key_Down) Desk.briStep(-5);
+            else return false;
+        } else {
+            return false;
+        }
+        e.accepted = true;
+        return true;
+    }
+
+    Loader { anchors.fill: parent; active: root.mode === "music"; sourceComponent: musicComp }
+    Loader { anchors.fill: parent; active: root.mode === "volume"; sourceComponent: volComp }
+    Loader { anchors.fill: parent; active: root.mode === "mic"; sourceComponent: micComp }
+    Loader { anchors.fill: parent; active: root.mode === "battery"; sourceComponent: batComp }
+
+    // ---- Music: one tall card per player ----
+    Component {
+        id: musicComp
+        Item {
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Txt {
+                visible: root.mpPlayers.length === 0
+                x: root.musicX
+                y: root.rowBottom - 40
+                text: "Nothing playing"
+                font.pixelSize: 22
+                color: Theme.fgDim
+                opacity: root.vis
+            }
+
+            Repeater {
+                model: root.mpPlayers
+                delegate: Item {
+                    id: mc
+                    required property var modelData
+                    required property int index
+                    readonly property bool cur: root.inCards && root.cardIdx === index
+                    readonly property real frac: (modelData && modelData.length > 0) ? Math.max(0, Math.min(1, modelData.position / modelData.length)) : 0
+
+                    width: root.bigW
+                    height: root.bigH
+                    x: root.musicX + index * (root.bigW + root.gap)
+                    y: root.rowBottom - height + (1 - root.vis) * 40
+                    opacity: root.vis
+                    scale: cur ? 1.03 : 1
+                    Behavior on scale {
+                        NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+                    }
+
+                    GlassSlot { anchors.fill: parent; radius: 18 }
+
+                    Item {
+                        id: cover
+                        x: 10
+                        y: 10
+                        width: parent.width - 20
+                        height: 220
+                        clip: true
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.35) }
+                        Txt {
+                            anchors.centerIn: parent
+                            visible: art.status !== Image.Ready
+                            text: "\u266a"
+                            font.pixelSize: 72
+                            color: Theme.fgDim
+                        }
+                        Image {
+                            id: art
+                            anchors.fill: parent
+                            source: mc.modelData && mc.modelData.trackArtUrl ? mc.modelData.trackArtUrl : ""
+                            sourceSize: Qt.size(600, 600)
+                            asynchronous: true
+                            fillMode: Image.PreserveAspectCrop
+                            visible: status === Image.Ready
+                        }
+                    }
+
+                    Txt {
+                        x: 18
+                        y: 242
+                        width: parent.width - 36
+                        text: mc.modelData && mc.modelData.trackTitle ? mc.modelData.trackTitle : (mc.modelData ? mc.modelData.identity : "")
+                        font.pixelSize: 19
+                        font.weight: Font.DemiBold
+                        textFormat: Text.PlainText
+                    }
+                    Txt {
+                        x: 18
+                        y: 269
+                        width: parent.width - 36
+                        text: mc.modelData && mc.modelData.trackArtist ? mc.modelData.trackArtist : (mc.modelData && mc.modelData.trackTitle ? mc.modelData.identity : "")
+                        font.pixelSize: 14
+                        color: Theme.fgDim
+                        textFormat: Text.PlainText
+                    }
+
+                    Rectangle {
+                        x: 18
+                        y: 306
+                        width: parent.width - 36
+                        height: 4
+                        radius: 2
+                        color: Qt.rgba(1, 1, 1, 0.16)
+                        Rectangle {
+                            width: parent.width * mc.frac
+                            height: parent.height
+                            radius: 2
+                            color: Theme.fg
+                        }
+                    }
+
+                    Repeater {
+                        model: 3
+                        delegate: Txt {
+                            required property int index
+                            readonly property bool mid: index === 1
+                            width: mc.width / 3
+                            x: index * width
+                            y: mid ? 322 : 326
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.nfFamily !== ""
+                                ? (index === 0 ? "\uf048" : (mid ? (mc.modelData && mc.modelData.isPlaying ? "\uf04c" : "\uf04b") : "\uf051"))
+                                : (index === 0 ? "<" : (mid ? (mc.modelData && mc.modelData.isPlaying ? "||" : ">") : ">"))
+                            font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
+                            font.pixelSize: mid ? 26 : 20
+                            color: mid ? Theme.fg : Theme.fgDim
+                        }
+                    }
+
+                    GlassRing {
+                        anchors.fill: parent
+                        anchors.margins: -4.5
+                        radius: 22
+                        opacity: mc.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+                    Txt {
+                        x: 2
+                        y: mc.height + 14
+                        text: mc.modelData && mc.modelData.isPlaying ? "Pause" : "Play"
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                        opacity: mc.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { root.cardIdx = mc.index; root.inCards = true; root.activateCard(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Volume: a glass list of output devices above the speaker icon ----
+    Component {
+        id: volComp
+        Item {
+            id: vRoot
+            readonly property int nRows: Math.max(1, root.vSinks.length)
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Item {
+                id: vp
+                width: 440
+                height: 24 + vRoot.nRows * 62
+                x: Math.max(root.padX, Math.min(root.width / 2 + 0.5 * root.stepX - width / 2, root.width - root.padX - width))
+                y: root.rowBottom - height + (1 - root.vis) * 40
+                opacity: root.vis
+
+                GlassSlot { anchors.fill: parent; radius: 22 }
+
+                Txt {
+                    visible: root.vSinks.length === 0
+                    x: 30
+                    y: 12 + 21
+                    text: "No output devices"
+                    font.pixelSize: 17
+                    color: Theme.fgDim
+                }
+
+                Repeater {
+                    model: root.vSinks
+                    delegate: Item {
+                        id: vr
+                        required property var modelData
+                        required property int index
+                        readonly property bool cur: root.inCards && root.cardIdx === index
+                        readonly property var au: modelData ? modelData.audio : null
+                        readonly property real lvl: au ? au.volume : 0
+                        readonly property bool mut: au ? au.muted : false
+                        readonly property bool isDef: modelData === root.sinkNode
+                        property real selT: cur ? 1 : 0
+                        Behavior on selT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                        x: 12
+                        y: 12 + index * 62
+                        width: vp.width - 24
+                        height: 62
+
+                        Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 14; color: Qt.rgba(1, 1, 1, 0.07); opacity: vr.selT }
+                        GlassRing { anchors.fill: parent; anchors.margins: -1; radius: 17; opacity: vr.selT; visible: opacity > 0.01 }
+
+                        Rectangle {
+                            x: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 42
+                            height: 42
+                            radius: 21
+                            color: vr.isDef ? Theme.fg : Qt.rgba(1, 1, 1, 0.09)
+                            Txt {
+                                anchors.centerIn: parent
+                                text: root.nfFamily !== "" ? ((vr.mut || vr.lvl <= 0.001) ? "\uf026" : (vr.lvl < 0.5 ? "\uf027" : "\uf028")) : "V"
+                                font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
+                                font.pixelSize: root.nfFamily !== "" ? 18 : 14
+                                font.weight: Font.Bold
+                                color: vr.isDef ? Theme.deep : Theme.fgDim
+                                elide: Text.ElideNone
+                            }
+                        }
+
+                        Txt {
+                            x: 68
+                            y: 10
+                            width: parent.width - 68 - 90
+                            text: root.nodeName(vr.modelData)
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                            textFormat: Text.PlainText
+                        }
+                        Rectangle {
+                            x: 68
+                            y: 40
+                            width: parent.width - 68 - 90
+                            height: 4
+                            radius: 2
+                            color: Qt.rgba(1, 1, 1, 0.16)
+                            Rectangle {
+                                width: parent.width * Math.min(1, vr.lvl)
+                                height: parent.height
+                                radius: 2
+                                color: Theme.fg
+                                opacity: vr.mut ? 0.35 : 1
+                            }
+                        }
+                        Txt {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 18
+                            y: 11
+                            text: vr.mut ? "Muted" : Math.round(vr.lvl * 100) + "%"
+                            font.pixelSize: 14
+                            color: Theme.fgDim
+                        }
+                        Txt {
+                            visible: vr.isDef
+                            anchors.right: parent.right
+                            anchors.rightMargin: 18
+                            y: 33
+                            text: "Default"
+                            font.pixelSize: 12
+                            color: Theme.fgDim
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: { root.cardIdx = vr.index; root.inCards = true; root.activateCard(); }
+                        }
+                    }
+                }
+
+                Txt {
+                    x: 2
+                    y: vp.height + 14
+                    visible: root.inCards && root.vSinks.length > 0
+                    text: root.vSinks[root.cardIdx] === root.sinkNode ? "Default output" : "Use as default output"
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                }
+            }
+        }
+    }
+
+    // ---- Mic: one card. Enter on the strip icon mutes straight away; Up opens this card ----
+    Component {
+        id: micComp
+        Item {
+            id: mRoot
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Txt {
+                visible: !root.micNode
+                x: Math.max(root.padX, root.width / 2 + 1.5 * root.stepX - 110)
+                y: root.rowBottom - 40
+                text: "No microphone found"
+                font.pixelSize: 22
+                color: Theme.fgDim
+                opacity: root.vis
+            }
+
+            Item {
+                id: mk
+                visible: !!root.micNode
+                readonly property bool cur: root.inCards
+                width: root.smW
+                height: root.smH
+                x: Math.max(root.padX, Math.min(root.width / 2 + 1.5 * root.stepX - width / 2, root.width - root.padX - width))
+                y: root.rowBottom - height + (1 - root.vis) * 40
+                opacity: root.vis
+                scale: cur ? 1.04 : 1
+                Behavior on scale {
+                    NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+                }
+
+                GlassSlot { anchors.fill: parent; radius: 18 }
+
+                Rectangle {
+                    x: 22
+                    y: 22
+                    width: 64
+                    height: 64
+                    radius: 32
+                    color: root.micMuted ? Qt.rgba(1, 1, 1, 0.10) : Theme.fg
+                    Behavior on color { ColorAnimation { duration: 200 } }
+                    Txt {
+                        anchors.centerIn: parent
+                        text: root.nfFamily !== "" ? (root.micMuted ? "\uf131" : "\uf130") : "MIC"
+                        font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
+                        font.pixelSize: root.nfFamily !== "" ? 28 : 12
+                        font.weight: Font.Bold
+                        color: root.micMuted ? Theme.fgDim : Theme.deep
+                        elide: Text.ElideNone
+                    }
+                }
+                Txt {
+                    x: 22
+                    y: 104
+                    width: parent.width - 44
+                    text: root.nodeName(root.micNode)
+                    font.pixelSize: 19
+                    font.weight: Font.DemiBold
+                    color: Theme.fgDim
+                    textFormat: Text.PlainText
+                }
+                Txt {
+                    x: 22
+                    y: 130
+                    width: parent.width - 44
+                    text: root.micMuted ? "Muted" : "Live"
+                    font.pixelSize: 30
+                    font.weight: Font.Bold
+                }
+                Rectangle {
+                    x: 22
+                    y: 190
+                    width: parent.width - 44
+                    height: 6
+                    radius: 3
+                    color: Qt.rgba(1, 1, 1, 0.16)
+                    Rectangle {
+                        width: parent.width * Math.min(1, root.micVol)
+                        height: parent.height
+                        radius: 3
+                        color: Theme.fg
+                        opacity: root.micMuted ? 0.35 : 1
+                    }
+                }
+                Txt {
+                    x: 22
+                    y: 206
+                    width: parent.width - 44
+                    text: "Input volume " + Math.round(root.micVol * 100) + "%"
+                    font.pixelSize: 14
+                    color: Theme.fgDim
+                }
+
+                GlassRing {
+                    anchors.fill: parent
+                    anchors.margins: -4.5
+                    radius: 22
+                    opacity: mk.cur ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                }
+                Txt {
+                    x: 2
+                    y: mk.height + 14
+                    text: root.micMuted ? "Unmute microphone" : "Mute microphone"
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                    opacity: mk.cur ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { root.inCards = true; root.cardIdx = 0; root.micToggle(); }
+                }
+            }
+        }
+    }
+
+    // ---- Battery: one ring card per battery, then Brightness ----
+    Component {
+        id: batComp
+        Item {
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Repeater {
+                model: root.battList.length + 1
+                delegate: Item {
+                    id: bc
+                    required property int index
+                    readonly property bool isBri: index === root.battList.length
+                    readonly property var b: isBri ? null : root.battList[index]
+                    readonly property bool cur: root.inCards && root.cardIdx === index
+                    readonly property real pct: b ? Math.max(0, Math.min(1, b.pct)) : 0
+                    readonly property color tone: b ? root.battTone(b) : Theme.fg
+                    readonly property int bri: Desk.brightness
+
+                    width: root.smW
+                    height: root.smH
+                    x: root.battX + index * (root.smW + root.gap)
+                    y: root.rowBottom - height + (1 - root.vis) * 40
+                    opacity: root.vis
+                    scale: cur ? 1.04 : 1
+                    Behavior on scale {
+                        NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+                    }
+
+                    GlassSlot { anchors.fill: parent; radius: 18 }
+
+                    // battery card: ring, percent in the middle, name, state
+                    Item {
+                        visible: !bc.isBri
+                        anchors.fill: parent
+                        Shape {
+                            x: (parent.width - 112) / 2
+                            y: 20
+                            width: 112
+                            height: 112
+                            preferredRendererType: Shape.CurveRenderer
+                            ShapePath {
+                                strokeColor: Qt.rgba(1, 1, 1, 0.16)
+                                strokeWidth: 9
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                PathAngleArc { centerX: 56; centerY: 56; radiusX: 47; radiusY: 47; startAngle: -90; sweepAngle: 359.9 }
+                            }
+                            ShapePath {
+                                strokeColor: bc.tone
+                                strokeWidth: 9
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                PathAngleArc { centerX: 56; centerY: 56; radiusX: 47; radiusY: 47; startAngle: -90; sweepAngle: Math.max(0.5, 359.9 * bc.pct) }
+                            }
+                        }
+                        Txt {
+                            x: (parent.width - 112) / 2
+                            y: 20
+                            width: 112
+                            height: 112
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            text: bc.b ? Math.round(bc.pct * 100) + "%" : ""
+                            font.pixelSize: 28
+                            font.weight: Font.Bold
+                            color: bc.tone
+                        }
+                        Txt {
+                            x: 22
+                            y: 148
+                            width: parent.width - 44
+                            horizontalAlignment: Text.AlignHCenter
+                            text: bc.b ? bc.b.name : ""
+                            font.pixelSize: 19
+                            font.weight: Font.DemiBold
+                            textFormat: Text.PlainText
+                        }
+                        Txt {
+                            x: 22
+                            y: 178
+                            width: parent.width - 44
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.battSub(bc.b)
+                            font.pixelSize: 14
+                            color: Theme.fgDim
+                            wrapMode: Text.NoWrap
+                            maximumLineCount: 3
+                            lineHeight: 1.15
+                            textFormat: Text.PlainText
+                        }
+                    }
+
+                    // brightness card
+                    Item {
+                        visible: bc.isBri
+                        anchors.fill: parent
+                        Rectangle {
+                            x: 22
+                            y: 22
+                            width: 64
+                            height: 64
+                            radius: 32
+                            color: Theme.fg
+                            Txt {
+                                anchors.centerIn: parent
+                                text: root.nfFamily !== "" ? "\uf185" : "SUN"
+                                font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
+                                font.pixelSize: root.nfFamily !== "" ? 28 : 12
+                                font.weight: Font.Bold
+                                color: Theme.deep
+                                elide: Text.ElideNone
+                            }
+                        }
+                        Txt {
+                            x: 22
+                            y: 104
+                            width: parent.width - 44
+                            text: "Brightness"
+                            font.pixelSize: 19
+                            font.weight: Font.DemiBold
+                            color: Theme.fgDim
+                        }
+                        Txt {
+                            x: 22
+                            y: 130
+                            width: parent.width - 44
+                            text: bc.bri < 0 ? "\u2014" : bc.bri + "%"
+                            font.pixelSize: 30
+                            font.weight: Font.Bold
+                        }
+                        Rectangle {
+                            x: 22
+                            y: 190
+                            width: parent.width - 44
+                            height: 6
+                            radius: 3
+                            color: Qt.rgba(1, 1, 1, 0.16)
+                            Rectangle {
+                                width: parent.width * Math.max(0, Math.min(1, bc.bri / 100))
+                                height: parent.height
+                                radius: 3
+                                color: Theme.fg
+                            }
+                        }
+                    }
+
+                    GlassRing {
+                        anchors.fill: parent
+                        anchors.margins: -4.5
+                        radius: 22
+                        opacity: bc.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+                    Txt {
+                        x: 2
+                        y: bc.height + 14
+                        text: bc.isBri ? "Up / Down to adjust" : ""
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                        opacity: bc.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { root.cardIdx = bc.index; root.inCards = true; }
+                    }
+                }
+            }
+        }
+    }
+    // ----------------------------------------------------------------------------------------------------------
+
     // ---- the strip ----
     Repeater {
         model: 10
@@ -819,11 +2001,11 @@ Item {
             Txt {
                 visible: !(it.index === 1 && root.appIcon !== "")
                 anchors.centerIn: parent
-                text: root.nfFamily !== "" ? root.glyphs[it.index] : root.fallbacks[it.index]
+                text: root.nfFamily !== "" ? root.stripGlyph(it.index) : root.fallbacks[it.index]
                 font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
                 font.pixelSize: root.nfFamily !== "" ? 26 : 12
                 font.weight: Font.Bold
-                opacity: it.cur ? 1 : 0.7
+                opacity: (it.index === 6 && root.micMuted) ? 0.35 : (it.cur ? 1 : 0.7)
             }
             Rectangle {                                 // viii-cc-ws: number of workspaces that have windows
                 visible: it.index === 3 && root.wsBadge > 0
@@ -836,6 +2018,22 @@ Item {
                 Txt {
                     anchors.centerIn: parent
                     text: String(root.wsBadge)
+                    font.pixelSize: 12
+                    font.weight: Font.Bold
+                    color: Theme.deep
+                }
+            }
+            Rectangle {                                 // viii-cc-notif-conn: unread notifications on the bell
+                visible: it.index === 2 && root.unread > 0
+                x: parent.width - 14
+                y: -6
+                width: root.unread > 9 ? 26 : 20
+                height: 20
+                radius: 10
+                color: Theme.accent
+                Txt {
+                    anchors.centerIn: parent
+                    text: root.unread > 9 ? "9+" : String(root.unread)
                     font.pixelSize: 12
                     font.weight: Font.Bold
                     color: Theme.deep
@@ -854,7 +2052,7 @@ Item {
         x: root.width / 2 + (root.idx - 4.5) * root.stepX - width / 2
         y: root.stripY + 46
         horizontalAlignment: Text.AlignHCenter
-        text: root.names[root.idx]
+        text: root.stripName()
         font.pixelSize: 15
         font.weight: Font.DemiBold
         opacity: root.vis
