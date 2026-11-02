@@ -114,6 +114,18 @@ PanelWindow {
     Connections {
         target: Desk
         function onLibraryRequested() { win.page = 1; win.tabsFocus = false; }
+        function onHubRequested() {      // viii-hub-root: back to the root page, whatever was open
+            win.historyOpen = false;
+            win.storeOpen = false;
+            if (win.settingsOpen) win.closeSettings();
+            win.searchOpen = false;
+            win.query = "";
+            win.bellFocus = false;
+            win.gearFocus = false;
+            win.searchFocus = false;
+            win.page = 0;
+            win.tabsFocus = false;
+        }
         function onSettingsRequested() { if (win.isFocusedMon) win.openSettings(); }
         function onWardRequested() {
             if (!win.isFocusedMon) return;

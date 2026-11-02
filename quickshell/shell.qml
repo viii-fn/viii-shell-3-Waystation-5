@@ -70,8 +70,8 @@ ShellRoot {
     // Hyprland global shortcuts, app id "shell". These are the same names the old shell answered to,
     // so your existing binds (SUPER+Return, brightness keys, ...) keep working unchanged.
     GlobalShortcut {
-        appid: "shell"; name: "launcher"; description: "Open the app library"
-        onPressed: Desk.openLibrary()
+        appid: "shell"; name: "launcher"; description: "Open the hub (root page)"
+        onPressed: Desk.openHub()      // viii-hub-root
     }
     // PS button: hypr/viii.lua binds one key twice (press and release) to tell a tap from a hold.
     // Desk.psDown/psUp ignore repeats, so it is safe if Hyprland also reports the release on the press bind.

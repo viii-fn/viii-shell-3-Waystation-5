@@ -23,6 +23,7 @@ Singleton {
     property int briPending: 0
 
     signal libraryRequested()
+    signal hubRequested()              // viii-hub-root: launcher key goes to the hub's root page
     signal settingsRequested()
     signal wardRequested()
     signal shotRequested()
@@ -39,6 +40,7 @@ Singleton {
     function isEmpty(name) { return empty[name] === true; }
 
     function openLibrary() { summoned = true; libraryRequested(); }
+    function openHub() { ccOpen = false; summoned = true; hubRequested(); }   // viii-hub-root
     function openHistory() { notifSeen = Date.now(); summoned = true; wardRequested(); }
     function openShot() { shotRequested(); }
 
