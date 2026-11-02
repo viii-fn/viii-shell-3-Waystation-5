@@ -2013,19 +2013,7 @@ Item {
                 NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
             }
 
-            GlassSlot {
-                anchors.fill: parent
-                radius: 28
-                opacity: it.cur ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-            }
-            GlassRing {
-                anchors.fill: parent
-                anchors.margins: -4.5
-                radius: 32.5
-                opacity: it.cur && !root.inCards ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-            }
+            // viii-cc-strip-plain: no tile and no ring on the selected icon, it is only brighter and a bit larger
             Image {
                 visible: it.index === 1 && root.appIcon !== ""
                 anchors.centerIn: parent
