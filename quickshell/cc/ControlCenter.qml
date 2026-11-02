@@ -57,14 +57,20 @@ PanelWindow {
             else if (event.key === Qt.Key_Escape) { Desk.ccOpen = false; event.accepted = true; }
         }
 
-        // dim scrim, tinted by the current theme, darker toward the bottom where the strip sits
+        // viii-cc-scrim: a light dim over the top, then a fade that starts 30% up from the bottom
+        // and ends in solid black, with pure black below it (the strip sits on that)
         Rectangle {
+            id: scrim
             anchors.fill: parent
             opacity: win.vis
+            readonly property real topDim: 0.15     // how much the upper part is dimmed (0 = not at all)
+            readonly property real fadeFrom: 0.70   // where the fade starts, as a fraction of the screen height
+            readonly property real fadeTo: 0.88     // where it is solid black
             gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.30) }
-                GradientStop { position: 0.55; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.72) }
-                GradientStop { position: 1.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.95) }
+                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, scrim.topDim) }
+                GradientStop { position: scrim.fadeFrom; color: Qt.rgba(0, 0, 0, scrim.topDim) }
+                GradientStop { position: scrim.fadeTo; color: Qt.rgba(0, 0, 0, 1.0) }
+                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 1.0) }
             }
         }
 

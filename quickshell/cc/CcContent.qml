@@ -2035,6 +2035,8 @@ Item {
                 sourceSize: Qt.size(68, 68)
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
+                opacity: it.cur ? 1 : 0.38          // viii-cc-strip
+                Behavior on opacity { NumberAnimation { duration: 180 } }
             }
             Txt {
                 visible: !(it.index === 1 && root.appIcon !== "")
@@ -2043,7 +2045,8 @@ Item {
                 font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
                 font.pixelSize: root.nfFamily !== "" ? 26 : 12
                 font.weight: Font.Bold
-                opacity: (it.index === 6 && root.micMuted) ? 0.35 : (it.cur ? 1 : 0.7)
+                opacity: (it.cur ? 1 : 0.38) * ((it.index === 6 && root.micMuted) ? 0.5 : 1)     // viii-cc-strip
+                Behavior on opacity { NumberAnimation { duration: 180 } }
             }
             Rectangle {                                 // viii-cc-ws: number of workspaces that have windows
                 visible: it.index === 3 && root.wsBadge > 0
