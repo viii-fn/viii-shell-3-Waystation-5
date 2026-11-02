@@ -43,6 +43,12 @@ fi
 grep -q '"primary": "#' "$HOME/.cache/viii/theme.json" 2>/dev/null || { echo "viii-theme: theme.json has no colours: template syntax problem"; exit 1; }
 
 printf '%s\n' "$img" > "$S/wallpaper"
+if [ "$cfg" = "config.toml" ]; then
+  # history of applied wallpapers, most recent first, 12 kept (the Wallstore tile shows it as "Top wallpapers"); written in place
+  { printf '%s\n' "$img"; grep -vxF -- "$img" "$S/wallpaper-history" 2>/dev/null; } | head -n 12 > "$S/wallpaper-history.new" \
+    && cat "$S/wallpaper-history.new" > "$S/wallpaper-history"
+  rm -f "$S/wallpaper-history.new"
+fi
 [ "$cfg" = "config.toml" ] && pkill -USR1 -x kitty 2>/dev/null
 # fish colours are universal variables: sourcing the file once updates every open shell
 [ "$cfg" = "config.toml" ] && command -v fish >/dev/null 2>&1 && fish -c 'source ~/.config/fish/conf.d/viii-colors.fish' >/dev/null 2>&1

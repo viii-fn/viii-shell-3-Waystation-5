@@ -348,6 +348,7 @@ PanelWindow {
                 width: parent.width
                 height: parent.height
                 intro: win.intro
+                shown: win.shown
                 opacity: (1 - win.pageT) * (1 - settings.reveal)
                 y: win.vOff - 26 * win.pageT - 18 * settings.reveal
                 scale: 1 - 0.025 * settings.reveal
@@ -365,19 +366,6 @@ PanelWindow {
                 scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
-            }
-
-            Row {
-                anchors.right: parent.right
-                anchors.rightMargin: 72
-                y: parent.height - 56
-                spacing: 28
-                opacity: Math.min(1, win.intro * 2) * (1 - settings.reveal)
-                Hint { key: "\u2190 \u2192"; label: "Browse" }
-                Hint { key: "Enter"; label: win.page === 0 && win.sel && win.sel.isLibrary === true ? "Browse" : "Open" }
-                Hint { key: "Tab"; label: "Switch" }
-                Hint { key: "A-Z"; label: "Search" }
-                Hint { key: "Esc"; label: "Back" }
             }
 
             WallstorePage {

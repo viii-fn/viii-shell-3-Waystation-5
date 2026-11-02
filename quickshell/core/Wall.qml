@@ -64,5 +64,29 @@ Singleton {
         onLoaded: root.current = text().trim()
     }
 
+    // wallpapers you applied, most recent first (written by bin/viii-theme)
+    property var history: []
+    FileView {
+        path: root.home + "/.local/state/viii/wallpaper-history"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.history = text().split("\n").filter(s => s.length > 0)
+    }
+
+    // "Top wallpapers": the history, then the rest of the folder, so the row is never empty
+    readonly property var recent: {
+        const out = [];
+        const seen = {};
+        for (let i = 0; i < history.length && out.length < 12; i++) {
+            const p = history[i];
+            if (!seen[p] && (!scanned || files.indexOf(p) >= 0)) { seen[p] = true; out.push(p); }
+        }
+        if (current && !seen[current] && out.length < 12 && (!scanned || files.indexOf(current) >= 0)) { seen[current] = true; out.unshift(current); }
+        for (let i = 0; i < files.length && out.length < 12; i++) {
+            if (!seen[files[i]]) { seen[files[i]] = true; out.push(files[i]); }
+        }
+        return out;
+    }
+
     Component.onCompleted: refresh()
 }

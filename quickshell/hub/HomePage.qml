@@ -17,6 +17,7 @@ Item {
     property real f: 0
     property bool animateF: true
     property real infoIn: 1
+    property bool shown: true            // the hub is on screen (the strip only keeps thumbnails loaded then)
     signal launched(var entry, real x, real y, real w, real h)
 
     // geometry in design pixels, measured from the real PS5 home screen scaled to 1366 wide
@@ -152,7 +153,7 @@ Item {
         y: root.rowTop + 4 + root.small + 12
         width: 700
         text: root.cur ? root.cur.name : ""
-        font.pixelSize: 30
+        font.pixelSize: 24
         font.weight: Font.Light
         opacity: root.infoZ * root.infoIn
         transform: Translate { x: (1 - root.infoIn) * 18 }
@@ -216,16 +217,14 @@ Item {
         }
     }
 
-    // name of the current wallpaper, shown while the Wallstore tile is selected
-    Txt {
+    // "Top wallpapers": the most recently set wallpapers, shown while the Wallstore tile is selected (display only)
+    WallStrip {
         x: root.padL
-        y: 596
+        y: 584
         opacity: (root.cur && root.cur.isWall === true) ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
-        text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
-        font.pixelSize: 12
-        font.letterSpacing: 1.6
-        color: Theme.fgDim
+        active: root.visible && root.shown && opacity > 0.01
+        transform: Translate { x: (1 - root.infoIn) * 18 }
     }
 
     // screen-time cards (the PS5's "Must see" row, per-app screen time instead of trophies)
