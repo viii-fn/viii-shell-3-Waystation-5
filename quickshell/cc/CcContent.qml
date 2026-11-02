@@ -1,6 +1,7 @@
 // viii-cc-1
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../core"
@@ -354,6 +355,30 @@ Item {
     Loader { anchors.fill: parent; active: root.mode === "windows"; sourceComponent: winRowComp }
     Loader { anchors.fill: parent; active: root.mode === "workspaces"; sourceComponent: wsRowComp }
     Loader { anchors.fill: parent; active: root.mode === "power"; sourceComponent: powerRowComp }
+
+    // viii-cc-home: Home selected -> the Welcome cards (same grid as the hub's Welcome tile). Enter / click = hub root.
+    Loader { anchors.fill: parent; active: root.idx === 0; sourceComponent: homeComp }
+    Component {
+        id: homeComp
+        Item {
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            WelcomeGrid {
+                id: homeGrid
+                shown: true
+                x: root.padX
+                y: root.rowBottom - height + (1 - root.vis) * 40
+                opacity: root.vis
+            }
+            MouseArea {
+                x: homeGrid.x
+                y: homeGrid.y
+                width: homeGrid.width
+                height: homeGrid.height
+                onClicked: root.goHome()
+            }
+        }
+    }
 
     Component {
         id: winRowComp
