@@ -10,6 +10,8 @@ Item {
     id: root
 
     property real intro: 1
+    property real zoom: 1                // 0 = all tiles equal and small, 1 = the focused tile is zoomed (driven by the intro below)
+    property real introPrev: 0
     property var entries: []
     property int current: 0
     property real f: 0
@@ -49,18 +51,40 @@ Item {
     }
     readonly property real scrollOff: {
         const fr = f - Math.floor(f);
-        return f * (small + gap) + d * fr * (1 - fr);
+        return f * (small + gap) + d * zoom * fr * (1 - fr);
     }
-    function wOf(i) { return small + d * tent(i); }
-    function xOf(i) { return padL + i * (small + gap) + d * tsum(i) - scrollOff; }
+    function wOf(i) { return small + d * zoom * tent(i); }
+    function xOf(i) { return padL + i * (small + gap) + d * zoom * tsum(i) - scrollOff; }
     function stage(i) {                    // staggered entrance, 0..1
-        const p = Math.max(0, Math.min(1, (intro - Math.min(i, 9) * 0.05) / 0.55));
+        // the whole row slides in together; only a very slight stagger (staggerMs per tile) ripples through it
+        const p = Math.max(0, Math.min(1, (intro - Math.min(i, 9) * staggerMs / 1000) / 0.55));
         return 1 - Math.pow(1 - p, 3);
     }
 
     Behavior on f {
         enabled: root.animateF
         NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+    }
+
+    // ---- intro timeline: slide in (equal small tiles) -> rest (holdMs) -> the focused tile zooms (zoomMs) ----
+    readonly property int holdMs: 400
+    readonly property int zoomMs: 600
+    readonly property int staggerMs: 6
+    readonly property var zoomCurve: [0.30, 0.0, 0.12, 1.0, 1, 1]          // soft start, long landing
+    readonly property real infoZ: Math.max(0, Math.min(1, (zoom - 0.20) / 0.80))   // title and cards arrive during the 2nd part of the zoom
+    onIntroChanged: {
+        if (introPrev <= 0.001 && intro > 0.001) introSeq.restart();
+        introPrev = intro;
+    }
+    SequentialAnimation {
+        id: introSeq
+        PropertyAction { target: root; property: "zoom"; value: 0 }
+        PauseAnimation { duration: 550 + 9 * root.staggerMs + root.holdMs }
+        NumberAnimation {
+            target: root; property: "zoom"
+            from: 0; to: 1; duration: root.zoomMs
+            easing.type: Easing.BezierSpline; easing.bezierCurve: root.zoomCurve
+        }
     }
 
     onCurrentChanged: { f = current; infoAnim.restart(); }
@@ -95,7 +119,7 @@ Item {
             required property int index
             readonly property real w: root.wOf(index)
             readonly property real t: root.stage(index)
-            readonly property real k: root.tent(index)
+            readonly property real k: root.tent(index) * root.zoom      // 0 until the zoom: no ring, no raised tile, no dimming
 
             x: root.xOf(index) + (1 - t) * 454
             y: root.rowTop + (1 - k) * 4 + (1 - t) * 26
@@ -127,7 +151,7 @@ Item {
         text: root.cur ? root.cur.name : ""
         font.pixelSize: 30
         font.weight: Font.Light
-        opacity: root.intro * root.infoIn
+        opacity: root.infoZ * root.infoIn
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }
 
@@ -138,7 +162,7 @@ Item {
         y: 410
         width: 760
         height: 170
-        opacity: root.intro * root.infoIn
+        opacity: root.infoZ * root.infoIn
         transform: Translate { x: (1 - root.infoIn) * 18 }
 
         Txt {
@@ -193,7 +217,7 @@ Item {
     Txt {
         x: root.padL
         y: 596
-        opacity: (root.cur && root.cur.isWall === true) ? root.intro * root.infoIn : 0
+        opacity: (root.cur && root.cur.isWall === true) ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
         text: "CURRENT WALLPAPER  \u00b7  " + Wall.name(Wall.current)
         font.pixelSize: 12
@@ -207,7 +231,7 @@ Item {
         y: 584
         entry: root.cur
         topSum: root.topSum
-        opacity: root.special ? 0 : root.intro * root.infoIn
+        opacity: root.special ? 0 : root.infoZ * root.infoIn
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }

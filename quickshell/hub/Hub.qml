@@ -170,7 +170,7 @@ PanelWindow {
     // pre-compute palettes for the home row once it has settled
     Timer {
         id: warm
-        interval: 900
+        interval: 2600
         onTriggered: { for (let i = 0; i < home.entries.length; i++) Apps.request(home.entries[i]); }
     }
     Timer {

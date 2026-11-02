@@ -122,6 +122,27 @@ Singleton {
         onTriggered: root.pump()
     }
 
+    // Palettes that are already on disk are read once, in a single process, so opening the hub never launches
+    // viii-palette for an app it has seen before. (Cache files are named <key>.json; dotfiles are skipped.)
+    Process {
+        id: cacheLoad
+        running: true
+        command: ["sh", "-c", 'cd "$HOME/.cache/viii/palettes" 2>/dev/null || exit 0; for f in *.json; do [ -s "$f" ] || continue; printf "%s\\t" "${f%.json}"; tr -d "\\n" < "$f"; echo; done']
+        stdout: StdioCollector { onStreamFinished: root.cacheLoaded(this.text) }
+    }
+
+    function cacheLoaded(text) {
+        const loaded = {};
+        const lines = String(text).split("\n");
+        for (let i = 0; i < lines.length; i++) {
+            const tab = lines[i].indexOf("\t");
+            if (tab <= 0) continue;
+            const p = parse(lines[i].slice(tab + 1));
+            if (p) loaded[lines[i].slice(0, tab)] = p;
+        }
+        palettes = Object.assign({}, loaded, palettes);    // anything fresher already in memory wins
+    }
+
     Process {
         id: proc
         stdout: StdioCollector { onStreamFinished: root.done(this.text) }
