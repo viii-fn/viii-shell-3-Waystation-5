@@ -209,34 +209,6 @@ FocusScope {
         elide: Text.ElideRight
     }
 
-    component KeyHint: Row {
-        id: keyHint
-        property string keyLabel: ""
-        property string description: ""
-        spacing: 9
-        Rectangle {
-            height: 24
-            width: Math.max(24, keyText.width + 16)
-            radius: 7
-            color: Theme.glassHi
-            border.width: 1
-            border.color: Theme.glassBorder
-            SettingsText {
-                id: keyText
-                anchors.centerIn: parent
-                text: keyHint.keyLabel
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-            }
-        }
-        SettingsText {
-            y: (24 - height) / 2
-            text: keyHint.description
-            font.pixelSize: 14
-            color: Theme.fgDim
-        }
-    }
-
     function rowsForCategory() {
         switch (shownCategory) {
         case 0: return [
@@ -1326,16 +1298,5 @@ FocusScope {
             font.pixelSize: 13
             color: Theme.fgDim
         }
-    }
-
-    Row {
-        anchors.right: parent.right
-        anchors.rightMargin: 68
-        y: parent.height - 43
-        spacing: 24
-        KeyHint { keyLabel: "↑ ↓"; description: "Navigate" }
-        KeyHint { keyLabel: "← →"; description: "Select / Adjust" }
-        KeyHint { keyLabel: "Enter"; description: "Open / Apply" }
-        KeyHint { keyLabel: "Esc"; description: "Back" }
     }
 }

@@ -703,7 +703,6 @@ PanelWindow {
                         onClicked: win.snap()
                     }
                 }
-                Hint { key: "Esc"; label: "Redo" }
             }
         }
 
@@ -811,15 +810,6 @@ PanelWindow {
                         onClicked: win.pick(opt.index)
                     }
                 }
-            }
-
-            Row {
-                x: (parent.width - width) / 2
-                y: 92
-                spacing: 18
-                Hint { key: "\u2190 \u2192"; label: "Choose" }
-                Hint { key: "Enter"; label: "Select" }
-                Hint { key: "Esc"; label: "Close" }
             }
         }
     }

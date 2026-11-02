@@ -361,14 +361,5 @@ Item {
                 color: Theme.fgDim
             }
         }
-
-        Txt {
-            anchors.right: parent.right
-            anchors.rightMargin: 72
-            y: 708
-            text: "\u2191 \u2193  browse      Esc  back"
-            font.pixelSize: 14
-            color: Theme.fgDim
-        }
     }
 }

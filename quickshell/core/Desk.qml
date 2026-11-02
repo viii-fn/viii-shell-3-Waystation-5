@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Wayland
 
 // Where the desktop stands: which monitors have an empty workspace (hub is the base layer there),
 // whether the hub was summoned on top of windows, the PS-button tap/hold logic, the Control Center
@@ -15,6 +16,7 @@ Singleton {
     property var empty: ({})           // monitor name -> true when its active workspace has no windows
     property bool psHoldFired: false
     property bool psIsDown: false      // guards against key repeat and double release events
+    property var lastActive: null      // last focused window (Wayland toplevel), for the Control Center's Active app
 
     property int brightness: -1        // percent, -1 = unknown
     property int briPending: 0
@@ -142,8 +144,13 @@ Singleton {
         }
     }
 
+    Connections {
+        target: ToplevelManager
+        function onActiveToplevelChanged() { if (ToplevelManager.activeToplevel) root.lastActive = ToplevelManager.activeToplevel; }
+    }
+
     Timer { id: debounce; interval: 40; onTriggered: root.refresh() }
     Timer { id: holdTimer; interval: 480; onTriggered: { root.psHoldFired = true; root.psHold(); } }
 
-    Component.onCompleted: { refresh(); briRefresh(); }
+    Component.onCompleted: { refresh(); briRefresh(); if (ToplevelManager.activeToplevel) lastActive = ToplevelManager.activeToplevel; }
 }
