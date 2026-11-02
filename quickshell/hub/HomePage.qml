@@ -33,13 +33,14 @@ Item {
 
     readonly property var cur: (entries && entries.length > 0) ? entries[Math.min(current, entries.length - 1)] : null
     readonly property bool special: cur !== null && (cur.isLibrary === true || cur.isWall === true)
+    readonly property bool welcome: cur !== null && cur.isWelcome === true
 
     readonly property real topSum: {
         void ScreenTime.revision;
         let m = 0;
         for (let i = 0; i < entries.length; i++) {
             const e = entries[i];
-            if (e && e.isLibrary !== true) m = Math.max(m, ScreenTime.sum(e, 7));
+            if (e && e.isLibrary !== true && e.isWelcome !== true) m = Math.max(m, ScreenTime.sum(e, 7));
         }
         return m;
     }
@@ -99,7 +100,11 @@ Item {
         current = n;
         return true;
     }
-    function reset() { animateF = false; current = 0; f = current; animateF = true; }
+    function startIndex() {                // the tile that is selected when the hub opens: Welcome
+        for (let i = 0; i < entries.length; i++) if (entries[i] && entries[i].isWelcome === true) return i;
+        return 0;
+    }
+    function reset() { animateF = false; current = startIndex(); f = current; animateF = true; }
     function activate() { if (cur) launched(cur, padL, rowTop, sel, sel); }
     function subtitle(e) {
         if (!e) return "";
@@ -166,7 +171,8 @@ Item {
         y: 410
         width: 760
         height: 170
-        opacity: root.infoZ * root.infoIn
+        opacity: root.welcome ? 0 : root.infoZ * root.infoIn
+        visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
 
         Txt {
@@ -233,7 +239,16 @@ Item {
         y: 584
         entry: root.cur
         topSum: root.topSum
-        opacity: root.special ? 0 : root.infoZ * root.infoIn
+        opacity: (root.special || root.welcome) ? 0 : root.infoZ * root.infoIn
+        visible: opacity > 0.01
+        transform: Translate { x: (1 - root.infoIn) * 18 }
+    }
+
+    // Welcome: the PS5 card grid (three columns, tall and small cards alternating)
+    WelcomeGrid {
+        x: root.padL
+        y: 376
+        opacity: root.welcome ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }

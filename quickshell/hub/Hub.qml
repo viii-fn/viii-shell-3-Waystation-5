@@ -47,19 +47,19 @@ PanelWindow {
     readonly property real dW: width / s
     readonly property real dH: height / s
     readonly property real vOff: Math.max(0, (dH - 768) / 2)
-    readonly property bool appsMissing: home.entries.length <= 2 || libAll.length === 0
+    readonly property bool appsMissing: home.entries.length <= 3 || libAll.length === 0
 
     readonly property var sel: page === 1 ? lib.cur : home.cur
 
     function iconUrl(entry) {
-        if (!entry || entry.isLibrary === true || entry.isWall === true) return "";
+        if (!entry || entry.isLibrary === true || entry.isWall === true || entry.isWelcome === true) return "";
         const p = Apps.iconPath(entry);
         if (!p) return "";
         return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
     function rebuild() {
-        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }, { isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
         home.reset();
         libAll = Apps.alphabetical();
         filterLib();
@@ -222,6 +222,7 @@ PanelWindow {
     // ---- actions ----
     function launch(entry, x, y, w, h) {
         if (launching || !entry) return;
+        if (entry.isWelcome === true) return;
         if (entry.isWall === true) { openStore(); return; }
         if (entry.isLibrary === true) { page = 1; tabsFocus = false; return; }
         launching = true;
