@@ -40,7 +40,7 @@ Item {
     readonly property var glyphs: ["", "", "", "", "", "", "", "", "", ""]
     readonly property var fallbacks: ["HOME", "APP", "NOTIF", "WS", "MUSIC", "VOL", "MIC", "BAT", "NET", "PWR"]
 
-    readonly property string mode: idx === 1 ? "windows" : (idx === 9 ? "power" : "")
+    readonly property string mode: idx === 1 ? "windows" : (idx === 3 ? "workspaces" : (idx === 9 ? "power" : ""))
 
     readonly property string nfFamily: {
         const f = Qt.fontFamilies();
@@ -67,7 +67,7 @@ Item {
         return out.slice(0, 8);
     }
     readonly property var wins: winList()
-    readonly property int count: mode === "windows" ? wins.length : (mode === "power" ? powerItems.length : 0)
+    readonly property int count: mode === "windows" ? wins.length : (mode === "workspaces" ? wsIds.length : (mode === "power" ? powerItems.length : 0))
     onCountChanged: {
         if (count === 0) inCards = false;
         else if (cardIdx >= count) cardIdx = count - 1;
@@ -124,6 +124,8 @@ Item {
             Desk.ccOpen = false;
             Desk.summoned = false;
             tl.activate();
+        } else if (mode === "workspaces") {
+            switchWorkspace(wsOrder[cardIdx]);
         } else if (mode === "power") {
             runPower();
         }
@@ -165,6 +167,175 @@ Item {
         e.accepted = ok;
     }
 
+    // ---- viii-cc-ws: Workspaces panel -------------------------------------------------------------------------
+    property var wsIds: []              // workspaces to show: non-empty ones plus the current one, ascending by id
+    property var wsData: ({})           // id -> { id, name, windows, monW, monH, clients: [{cls, x, y, w, h, focus}] }
+    property int activeId: -1           // the workspace showing on the focused monitor
+    property int wsWant: -1             // the workspace we just asked Hyprland for
+    property int wsStep: 0              // which dispatch syntax is being tried
+    property string wsMsg: ""
+    property string swOut: ""
+    property bool wsAgain: false
+
+    // display order: the current workspace first, then the rest by id
+    readonly property var wsOrder: {
+        const out = [];
+        if (wsIds.indexOf(activeId) >= 0) out.push(activeId);
+        for (let i = 0; i < wsIds.length; i++) if (wsIds[i] !== activeId) out.push(wsIds[i]);
+        return out;
+    }
+
+    // the SELECTED card is the tall one. selF glides to the selection, so the tall card moves smoothly.
+    readonly property int selRank: inCards ? cardIdx : 0
+    property real selF: selRank
+    Behavior on selF { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+
+    function wsTent(r) { return Math.max(0, 1 - Math.abs(r - selF)); }
+    function wsS(r) {                   // how much "tall bonus" sits to the left of integer position r
+        const k = Math.floor(selF);
+        const fr = selF - k;
+        if (r <= k) return 0;
+        if (r === k + 1) return 1 - fr;
+        return 1;
+    }
+    function wsX(rf) {                  // x of a card at (possibly fractional) position rf
+        const a = Math.floor(rf);
+        const f = rf - a;
+        const pa = a * (smW + gap) + (bigW - smW) * wsS(a);
+        const pb = (a + 1) * (smW + gap) + (bigW - smW) * wsS(a + 1);
+        return pa + (pb - pa) * f;
+    }
+
+    // badge on the strip icon: how many workspaces have windows (Desk keeps this list fresh, so it costs nothing here)
+    readonly property int wsBadge: {
+        const c = Desk.wsCache || [];
+        let n = 0;
+        for (let i = 0; i < c.length; i++) if (c[i].id > 0 && c[i].windows > 0) n++;
+        return n;
+    }
+
+    function iconForClass(cls) {
+        if (!cls) return "";
+        let p = "";
+        try {
+            const en = DesktopEntries.heuristicLookup(cls);
+            if (en) p = Apps.iconPath(en);
+        } catch (e) {}
+        if (!p) p = Quickshell.iconPath(String(cls).toLowerCase(), true);
+        if (!p) return "";
+        return p.charAt(0) === "/" ? "file://" + p : p;
+    }
+
+    // one process: workspaces + windows + monitors (only while the Workspaces panel is showing)
+    function wsRefresh() { if (wsProc.running) wsAgain = true; else wsProc.running = true; }
+    Process {
+        id: wsProc
+        command: ["sh", "-c", "hyprctl -j workspaces; echo '@@SEP@@'; hyprctl -j clients; echo '@@SEP@@'; hyprctl -j monitors"]
+        stdout: StdioCollector { onStreamFinished: root.wsParsed(this.text) }
+        onExited: { if (root.wsAgain) { root.wsAgain = false; root.wsRefresh(); } }
+    }
+    onModeChanged: { if (mode === "workspaces") wsRefresh(); }
+    Connections { target: Desk; function onWsCacheChanged() { if (root.mode === "workspaces") wsDebounce.restart(); } }
+    Timer { id: wsDebounce; interval: 120; onTriggered: root.wsRefresh() }
+
+    function wsParsed(text) {
+        const parts = String(text).split("@@SEP@@");
+        if (parts.length < 3) return;
+        let wss, cls, mons;
+        try { wss = JSON.parse(parts[0]); cls = JSON.parse(parts[1]); mons = JSON.parse(parts[2]); }
+        catch (e) { console.log("[viii-cc] workspace data unreadable:", e); return; }
+
+        const monById = {};
+        let mon = null;
+        for (let i = 0; i < mons.length; i++) { monById[mons[i].id] = mons[i]; if (mons[i].focused) mon = mons[i]; }
+        if (!mon && mons.length > 0) mon = mons[0];
+        const act = (mon && mon.activeWorkspace) ? mon.activeWorkspace.id : -1;
+
+        const mk = (id, name, n, m) => ({
+            id: id, name: name, windows: n,
+            monW: m ? m.width / (m.scale || 1) : 1366,
+            monH: m ? m.height / (m.scale || 1) : 768,
+            clients: []
+        });
+        const data = {};
+        for (let i = 0; i < wss.length; i++) {
+            const w = wss[i];
+            if (w.id <= 0) continue;                       // special workspaces (scratchpads) are not listed
+            data[w.id] = mk(w.id, w.name, w.windows, monById[w.monitorID] || mon);
+        }
+        for (let i = 0; i < cls.length; i++) {
+            const c = cls[i];
+            if (!c.mapped || c.hidden || !c.workspace || c.workspace.id <= 0) continue;
+            const m = monById[c.monitor] || mon;
+            if (!data[c.workspace.id]) data[c.workspace.id] = mk(c.workspace.id, c.workspace.name, 0, m);
+            data[c.workspace.id].clients.push({
+                cls: c["class"] || c.initialClass || "",
+                x: c.at[0] - (m ? m.x : 0), y: c.at[1] - (m ? m.y : 0),
+                w: c.size[0], h: c.size[1],
+                focus: c.focusHistoryID === 0
+            });
+        }
+        const ids = [];
+        for (const k in data) {
+            const d = data[k];
+            if (d.windows > 0 || d.clients.length > 0 || d.id === act) ids.push(d.id);
+        }
+        ids.sort((a, b) => a - b);
+
+        activeId = act;
+        wsData = data;
+        if (ids.join(",") !== wsIds.join(",")) wsIds = ids;
+        if (wsWant > 0 && wsWant === act) { wsWant = -1; cardIdx = 0; }    // the workspace we just switched to is now first
+    }
+
+    // ---- switching. Enter on a card calls this. It never closes the panel. ----
+    function switchWorkspace(id) {
+        if (!(id > 0)) return;
+        if (id === activeId) { wsMsg = ""; return; }       // already there
+        wsWant = id; wsStep = 0; wsMsg = "";
+        wsDispatch();
+    }
+    function wsCommand(step, id) {
+        const lua = 'hl.dsp.focus({ workspace = "' + id + '" })';
+        if (step === 0) return ["hyprctl", "dispatch", lua];                                   // Hyprland Lua config (this setup)
+        if (step === 1) return ["hyprctl", "dispatch", "workspace", String(id)];               // old hyprlang syntax
+        return ["hyprctl", "eval", "hl.dispatch(" + lua + ")"];                                // eval form
+    }
+    function wsDispatch() {
+        swOut = "";
+        swProc.command = wsCommand(wsStep, wsWant);
+        console.log("[viii-cc] workspace", wsWant, "try", wsStep, JSON.stringify(swProc.command));
+        swProc.running = true;
+    }
+    Process {
+        id: swProc
+        stdout: StdioCollector { onStreamFinished: root.swOut = this.text }
+        onExited: chkTimer.restart()
+    }
+    Timer { id: chkTimer; interval: 150; onTriggered: chkProc.running = true }
+    Process {
+        id: chkProc
+        command: ["hyprctl", "-j", "activeworkspace"]
+        stdout: StdioCollector { onStreamFinished: root.wsChecked(this.text) }
+    }
+    function wsChecked(text) {
+        let id = -1;
+        try { id = JSON.parse(text).id; } catch (e) {}
+        if (id === wsWant) {
+            console.log("[viii-cc] switched to workspace", id, "(syntax", wsStep + ")");
+            Desk.ccRegrab();
+            regrabLate.restart();           // again once the hub underneath (if the new workspace is empty) has settled
+            wsRefresh();                    // wsParsed then moves the new current workspace to the front
+            return;
+        }
+        console.log("[viii-cc] workspace", wsWant, "not reached, active is", id, "; hyprctl said:", String(swOut).trim());
+        if (wsStep < 2) { wsStep++; wsDispatch(); }
+        else { wsMsg = "Could not switch workspace (see: viii log)"; wsWant = -1; msgTimer.restart(); }
+    }
+    Timer { id: msgTimer; interval: 4000; onTriggered: root.wsMsg = "" }
+    Timer { id: regrabLate; interval: 550; onTriggered: Desk.ccRegrab() }
+    // -------------------------------------------------------------------------------------------------------------
+
     Timer { id: armTimer; interval: 3500; onTriggered: root.armed = "" }
     SystemClock { id: clk; precision: SystemClock.Minutes }
 
@@ -181,6 +352,7 @@ Item {
 
     // ---- card rows ----
     Loader { anchors.fill: parent; active: root.mode === "windows"; sourceComponent: winRowComp }
+    Loader { anchors.fill: parent; active: root.mode === "workspaces"; sourceComponent: wsRowComp }
     Loader { anchors.fill: parent; active: root.mode === "power"; sourceComponent: powerRowComp }
 
     Component {
@@ -318,6 +490,194 @@ Item {
     }
 
     Component {
+        id: wsRowComp
+        Item {
+            id: wsRow
+            // keep the selected (tall) card on screen: scroll the row when it would pass the right edge
+            property real shift: root.inCards
+                ? Math.max(0, root.cardIdx * (root.smW + root.gap) + root.bigW - (root.width - 2 * root.padX))
+                : 0
+            Behavior on shift {
+                NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+            }
+            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
+
+            Txt {
+                visible: root.wsIds.length === 0
+                x: root.padX
+                y: root.rowBottom - 40
+                text: "Loading workspaces..."
+                font.pixelSize: 22
+                color: Theme.fgDim
+                opacity: root.vis
+            }
+            Txt {
+                visible: root.wsMsg !== ""
+                anchors.right: parent.right
+                anchors.rightMargin: root.padX
+                y: root.rowBottom + 14
+                text: root.wsMsg
+                font.pixelSize: 16
+                color: "#ff8a8a"
+            }
+
+            Repeater {
+                model: root.wsIds
+                delegate: Item {
+                    id: wk
+                    required property int modelData
+                    required property int index
+                    readonly property var info: root.wsData[modelData] || null
+                    readonly property int rank: root.wsOrder.indexOf(modelData)
+                    property real rankF: rank                       // glides when the order changes (after a switch)
+                    Behavior on rankF {
+                        NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+                    }
+                    readonly property real t: root.wsTent(rankF)    // 1 = the selected, tall card
+                    readonly property bool cur: root.inCards && root.cardIdx === rank
+                    readonly property bool isActive: modelData === root.activeId
+                    readonly property real snapH: 190 + 100 * t
+                    readonly property int nWin: info ? Math.max(info.windows, info.clients.length) : 0
+
+                    width: root.smW + (root.bigW - root.smW) * t
+                    height: root.smH + (root.bigH - root.smH) * t
+                    x: root.padX + root.wsX(rankF) - wsRow.shift
+                    y: root.rowBottom - height + (1 - root.vis) * 40
+                    visible: rank >= 0
+                    opacity: root.vis
+                    scale: cur ? 1.03 : 1
+                    Behavior on scale {
+                        NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+                    }
+
+                    GlassSlot { anchors.fill: parent; radius: 18 }
+
+                    Item {
+                        id: snap
+                        x: 10
+                        y: 10
+                        width: parent.width - 20
+                        height: wk.snapH
+                        clip: true
+                        Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.35) }
+
+                        // mini-map: the monitor's shape, one rectangle (with the app's icon) per window
+                        Item {
+                            id: map
+                            readonly property real mw: wk.info ? wk.info.monW : 1366
+                            readonly property real mh: wk.info ? wk.info.monH : 768
+                            readonly property real k: Math.min((snap.width - 14) / mw, (snap.height - 14) / mh)
+                            anchors.centerIn: parent
+                            width: mw * k
+                            height: mh * k
+                            clip: true
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 6
+                                color: Qt.rgba(1, 1, 1, 0.05)
+                                border.width: 1
+                                border.color: Qt.rgba(1, 1, 1, 0.12)
+                            }
+                            Repeater {
+                                model: wk.info ? wk.info.clients : []
+                                delegate: Rectangle {
+                                    id: wr
+                                    required property var modelData
+                                    readonly property bool hot: modelData.focus && wk.isActive
+                                    x: modelData.x * map.k
+                                    y: modelData.y * map.k
+                                    width: Math.max(8, modelData.w * map.k)
+                                    height: Math.max(8, modelData.h * map.k)
+                                    radius: 4
+                                    color: Qt.rgba(1, 1, 1, 0.10)
+                                    border.width: hot ? 2 : 1
+                                    border.color: hot ? Theme.accent : Qt.rgba(1, 1, 1, 0.28)
+                                    Image {
+                                        readonly property real sz: Math.max(12, Math.min(44, Math.min(wr.width, wr.height) * 0.5))
+                                        anchors.centerIn: parent
+                                        width: sz
+                                        height: sz
+                                        visible: Math.min(wr.width, wr.height) >= 22
+                                        source: root.iconForClass(wr.modelData.cls)
+                                        sourceSize: Qt.size(88, 88)
+                                        asynchronous: true
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+                                }
+                            }
+                        }
+                        Txt {
+                            anchors.centerIn: parent
+                            visible: wk.nWin === 0
+                            text: "Empty"
+                            font.pixelSize: 18
+                            color: Theme.fgDim
+                        }
+                    }
+
+                    Rectangle {                                     // the workspace number, where other cards show the app icon
+                        x: 16
+                        y: snap.y + snap.height + 12
+                        width: 38
+                        height: 38
+                        radius: 19
+                        color: wk.isActive ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
+                        Txt {
+                            anchors.centerIn: parent
+                            text: String(wk.modelData)
+                            font.pixelSize: 18
+                            font.weight: Font.Bold
+                            color: wk.isActive ? Theme.deep : Theme.fg
+                        }
+                    }
+                    Txt {
+                        x: 64
+                        y: snap.y + snap.height + 12
+                        width: wk.width - 80
+                        text: (wk.info && wk.info.name && isNaN(Number(wk.info.name)))
+                            ? "Workspace " + wk.modelData + " · " + wk.info.name : "Workspace " + wk.modelData
+                        font.pixelSize: 19
+                        font.weight: Font.DemiBold
+                    }
+                    Txt {
+                        x: 64
+                        y: snap.y + snap.height + 38
+                        width: wk.width - 80
+                        text: (wk.nWin === 0 ? "Empty" : (wk.nWin === 1 ? "1 window" : wk.nWin + " windows")) + (wk.isActive ? " · current" : "")
+                        font.pixelSize: 14
+                        color: Theme.fgDim
+                    }
+
+                    GlassRing {
+                        anchors.fill: parent
+                        anchors.margins: -4.5
+                        radius: 22
+                        opacity: wk.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+
+                    // PS5 "Resume Game" label under the selected card
+                    Txt {
+                        x: 2
+                        y: wk.height + 14
+                        text: wk.isActive ? "Current workspace" : "Switch to workspace"
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                        opacity: wk.cur ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { root.cardIdx = wk.rank; root.inCards = true; root.activateCard(); }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
         id: powerRowComp
         Item {
             NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
@@ -439,6 +799,22 @@ Item {
                 font.pixelSize: root.nfFamily !== "" ? 26 : 12
                 font.weight: Font.Bold
                 opacity: it.cur ? 1 : 0.7
+            }
+            Rectangle {                                 // viii-cc-ws: number of workspaces that have windows
+                visible: it.index === 3 && root.wsBadge > 0
+                x: parent.width - 14
+                y: -6
+                width: 20
+                height: 20
+                radius: 10
+                color: Theme.accent
+                Txt {
+                    anchors.centerIn: parent
+                    text: String(root.wsBadge)
+                    font.pixelSize: 12
+                    font.weight: Font.Bold
+                    color: Theme.deep
+                }
             }
             MouseArea {
                 anchors.fill: parent

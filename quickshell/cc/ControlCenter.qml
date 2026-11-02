@@ -15,7 +15,7 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "viii-cc"
-    WlrLayershell.keyboardFocus: win.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: (win.shown && !win.kbCycle) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     readonly property var fm: Hyprland.focusedMonitor
     readonly property bool isFocusedMon: fm ? fm.name === screen.name : true
@@ -36,6 +36,17 @@ PanelWindow {
     readonly property real dH: height / s
 
     onShownChanged: if (shown) scope.forceActiveFocus()
+
+    // After a workspace switch Hyprland may hand the keyboard to a window on the new workspace.
+    // Dropping and re-requesting the exclusive grab for a moment gives it back to the panel.
+    property bool kbCycle: false
+    function regrab() { kbCycle = true; kbTimer.restart(); }
+    Timer { id: kbTimer; interval: 90; onTriggered: { win.kbCycle = false; scope.forceActiveFocus(); } }
+    Connections {
+        target: Desk
+        function onCcRegrab() { win.regrab(); }
+        function onCcOpenChanged() { console.log("[viii-cc] ccOpen ->", Desk.ccOpen); }
+    }
 
     FocusScope {
         id: scope

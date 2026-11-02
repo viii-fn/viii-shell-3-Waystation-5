@@ -26,6 +26,7 @@ Singleton {
     signal wardRequested()
     signal shotRequested()
     signal psTap()
+    signal ccRegrab()                  // ask the Control Center window to take the keyboard again (after a workspace switch)
 
     function openSettings() {
         summoned = true;
