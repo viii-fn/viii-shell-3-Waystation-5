@@ -1456,28 +1456,62 @@ Item {
                         NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
                     }
 
-                    GlassSlot { anchors.fill: parent; radius: 18 }
+                    // viii-cc-music-ps5: PS5 now-playing mini player look
+                    GlassSlot { anchors.fill: parent; radius: 16 }
+
+                    function fmt(s) {
+                        const t = Math.max(0, Math.floor(s || 0));
+                        return Math.floor(t / 60) + ":" + ("0" + (t % 60)).slice(-2);
+                    }
+                    readonly property var cxs: [0.27, 0.5, 0.73]
+
+                    Rectangle {
+                        x: 18
+                        y: 12
+                        width: 26
+                        height: 26
+                        radius: 7
+                        color: Qt.rgba(1, 1, 1, 0.16)
+                        Txt {
+                            anchors.centerIn: parent
+                            text: root.nfFamily !== "" ? "\uf001" : "\u266a"
+                            font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
+                            font.pixelSize: 14
+                        }
+                    }
+                    Txt {
+                        x: 54
+                        y: 12
+                        width: parent.width - 72
+                        height: 26
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        text: "Now playing on " + (mc.modelData ? mc.modelData.identity : "")
+                        font.pixelSize: 13
+                        color: Theme.fgDim
+                        textFormat: Text.PlainText
+                    }
 
                     Item {
                         id: cover
-                        x: 10
-                        y: 10
-                        width: parent.width - 20
-                        height: 220
+                        x: (parent.width - 186) / 2
+                        y: 46
+                        width: 186
+                        height: 186
                         clip: true
                         Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.35) }
                         Txt {
                             anchors.centerIn: parent
                             visible: art.status !== Image.Ready
                             text: "\u266a"
-                            font.pixelSize: 72
+                            font.pixelSize: 64
                             color: Theme.fgDim
                         }
                         Image {
                             id: art
                             anchors.fill: parent
                             source: mc.modelData && mc.modelData.trackArtUrl ? mc.modelData.trackArtUrl : ""
-                            sourceSize: Qt.size(600, 600)
+                            sourceSize: Qt.size(560, 560)
                             asynchronous: true
                             fillMode: Image.PreserveAspectCrop
                             visible: status === Image.Ready
@@ -1486,52 +1520,79 @@ Item {
 
                     Txt {
                         x: 18
-                        y: 242
+                        y: 240
                         width: parent.width - 36
-                        text: mc.modelData && mc.modelData.trackTitle ? mc.modelData.trackTitle : (mc.modelData ? mc.modelData.identity : "")
-                        font.pixelSize: 19
-                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                        text: mc.modelData && mc.modelData.trackTitle
+                            ? (mc.modelData.trackArtist ? mc.modelData.trackTitle + " - " + mc.modelData.trackArtist : mc.modelData.trackTitle)
+                            : (mc.modelData ? mc.modelData.identity : "")
+                        font.pixelSize: 17
+                        font.weight: Font.Medium
                         textFormat: Text.PlainText
                     }
                     Txt {
                         x: 18
-                        y: 269
+                        y: 264
                         width: parent.width - 36
-                        text: mc.modelData && mc.modelData.trackArtist ? mc.modelData.trackArtist : (mc.modelData && mc.modelData.trackTitle ? mc.modelData.identity : "")
-                        font.pixelSize: 14
+                        elide: Text.ElideRight
+                        text: mc.modelData && mc.modelData.trackAlbum ? mc.modelData.trackAlbum : ""
+                        font.pixelSize: 13
                         color: Theme.fgDim
                         textFormat: Text.PlainText
                     }
 
                     Rectangle {
                         x: 18
-                        y: 306
+                        y: 294
                         width: parent.width - 36
-                        height: 4
-                        radius: 2
-                        color: Qt.rgba(1, 1, 1, 0.16)
+                        height: 3
+                        radius: 1.5
+                        color: Qt.rgba(1, 1, 1, 0.20)
                         Rectangle {
                             width: parent.width * mc.frac
                             height: parent.height
-                            radius: 2
+                            radius: 1.5
                             color: Theme.fg
                         }
                     }
+                    Txt {
+                        x: 18
+                        y: 300
+                        text: mc.fmt(mc.modelData ? mc.modelData.position : 0)
+                        font.pixelSize: 11
+                        color: Theme.fgDim
+                    }
+                    Txt {
+                        x: parent.width - 18 - width
+                        y: 300
+                        text: mc.fmt(mc.modelData ? mc.modelData.length : 0)
+                        font.pixelSize: 11
+                        color: Theme.fgDim
+                    }
 
+                    // play/pause sits in a thin circle, like the pause button on the PS5
+                    Rectangle {
+                        x: mc.width * mc.cxs[1] - 23
+                        y: 323
+                        width: 46
+                        height: 46
+                        radius: 23
+                        color: Qt.rgba(1, 1, 1, 0.10)
+                        border.width: 1.5
+                        border.color: Qt.rgba(1, 1, 1, 0.55)
+                    }
                     Repeater {
                         model: 3
                         delegate: Txt {
                             required property int index
                             readonly property bool mid: index === 1
-                            width: mc.width / 3
-                            x: index * width
-                            y: mid ? 322 : 326
-                            horizontalAlignment: Text.AlignHCenter
+                            x: mc.width * mc.cxs[index] - width / 2
+                            y: 346 - height / 2
                             text: root.nfFamily !== ""
                                 ? (index === 0 ? "\uf048" : (mid ? (mc.modelData && mc.modelData.isPlaying ? "\uf04c" : "\uf04b") : "\uf051"))
                                 : (index === 0 ? "<" : (mid ? (mc.modelData && mc.modelData.isPlaying ? "||" : ">") : ">"))
                             font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
-                            font.pixelSize: mid ? 26 : 20
+                            font.pixelSize: mid ? 20 : 17
                             color: mid ? Theme.fg : Theme.fgDim
                         }
                     }
@@ -1539,12 +1600,11 @@ Item {
                     // one ring that glides between the parts of the focused card
                     GlassRing {
                         readonly property bool whole: root.mpPart === 0
-                        readonly property real third: mc.width / 3
-                        x: whole ? 4 : (root.mpPart - 1) * third + (third - 64) / 2
-                        y: whole ? 4 : 314
-                        width: whole ? mc.width - 8 : 64
-                        height: whole ? 298 : 52
-                        radius: whole ? 16 : 26
+                        x: whole ? 8 : mc.width * mc.cxs[Math.max(0, root.mpPart - 1)] - 23
+                        y: whole ? 40 : 323
+                        width: whole ? mc.width - 16 : 46
+                        height: whole ? 244 : 46
+                        radius: whole ? 12 : 23
                         opacity: mc.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                         Behavior on x { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
@@ -1569,7 +1629,7 @@ Item {
                         onClicked: (mouse) => {
                             root.cardIdx = mc.index;
                             root.inCards = true;
-                            root.mpPart = mouse.y < 306 ? 0 : 1 + Math.max(0, Math.min(2, Math.floor(mouse.x / (mc.width / 3))));
+                            root.mpPart = mouse.y < 312 ? 0 : 1 + Math.max(0, Math.min(2, Math.floor(mouse.x / (mc.width / 3))));
                             root.mpAct();
                         }
                     }
