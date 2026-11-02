@@ -21,11 +21,14 @@ Item {
 
     // geometry in design pixels, measured from the real PS5 home screen scaled to 1366 wide
     readonly property real small: 80
-    readonly property real sel: 132
-    readonly property real gap: 6
+    readonly property real sel: 135
+    readonly property real gap: 4
     readonly property real padL: 128
     readonly property real rowTop: 108
     readonly property real d: sel - small
+    // extra space on each side of the selected tile (set by viii-sel-margin.sh)
+    readonly property real selMargin: 4
+    readonly property real d2: d + 2 * selMargin
 
     readonly property var cur: (entries && entries.length > 0) ? entries[Math.min(current, entries.length - 1)] : null
     readonly property bool special: cur !== null && (cur.isLibrary === true || cur.isWall === true)
@@ -51,10 +54,10 @@ Item {
     }
     readonly property real scrollOff: {
         const fr = f - Math.floor(f);
-        return f * (small + gap) + d * zoom * fr * (1 - fr);
+        return f * (small + gap) + d2 * zoom * fr * (1 - fr);
     }
     function wOf(i) { return small + d * zoom * tent(i); }
-    function xOf(i) { return padL + i * (small + gap) + d * zoom * tsum(i) - scrollOff; }
+    function xOf(i) { return padL - selMargin * zoom + i * (small + gap) + d2 * zoom * tsum(i) + selMargin * zoom * tent(i) - scrollOff; }
     function stage(i) {                    // staggered entrance, 0..1
         // the whole row slides in together; only a very slight stagger (staggerMs per tile) ripples through it
         const p = Math.max(0, Math.min(1, (intro - Math.min(i, 9) * staggerMs / 1000) / 0.55));
@@ -145,7 +148,7 @@ Item {
 
     // ---- the PS5 label: name under the small tiles, right of the focused tile ----
     Txt {
-        x: root.padL + root.sel + 10
+        x: root.padL + root.sel + root.selMargin + 10
         y: root.rowTop + 4 + root.small + 12
         width: 700
         text: root.cur ? root.cur.name : ""

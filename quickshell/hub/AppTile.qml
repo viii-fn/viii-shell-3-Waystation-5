@@ -7,7 +7,7 @@ Item {
     id: root
     property var entry: null
     property real dim: 0                 // 0 = normal, 1 = fully dimmed (unfocused)
-    property real corner: Math.min(width, height) * 0.18
+    property real corner: Math.min(width, height) * 0.14
     property real iconScale: 0.8
     property real iconOpacity: 1
     property real ring: 0                // 0..1: the PS5 selection ring around the tile (the home row drives it)
@@ -32,12 +32,12 @@ Item {
     GlassSlot {
         anchors.fill: parent
         radius: root.corner
-        alpha: 0.94 - 0.06 * root.dim
+        alpha: 1
     }
 
     // selection ring: always there, only visible while the tile is focused
     GlassRing {
-        readonly property real out: 4.5
+        readonly property real out: 3.5
         x: -out; y: -out
         width: root.width + 2 * out
         height: root.height + 2 * out
