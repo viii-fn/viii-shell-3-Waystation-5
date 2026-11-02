@@ -20,13 +20,10 @@ Row {
     readonly property real maxDay: Math.max(60, ...series)
     readonly property int pct: topSum > 0 ? Math.round(100 * week / topSum) : 0
 
-    component Card: Rectangle {
+    component Card: Item {
         property string label: ""
         height: 124
-        radius: 18
-        color: "#111111"
-        border.width: 1
-        border.color: Theme.glass
+        GlassSlot { anchors.fill: parent; radius: 18 }
         Txt {
             x: 20; y: 16
             text: parent.label

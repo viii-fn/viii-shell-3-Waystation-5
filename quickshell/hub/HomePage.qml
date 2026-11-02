@@ -21,7 +21,7 @@ Item {
     readonly property real small: 80
     readonly property real sel: 132
     readonly property real gap: 6
-    readonly property real padL: 104
+    readonly property real padL: 128
     readonly property real rowTop: 108
     readonly property real d: sel - small
 
@@ -101,13 +101,16 @@ Item {
             y: root.rowTop + (1 - k) * 4 + (1 - t) * 26
             width: w
             height: w
-            opacity: t * Math.min(1, Math.max(0, 1 - (root.f - index)))
-            visible: x < root.width + 10 && x + width > -10 && opacity > 0.01
+            z: k
+            // tiles you have scrolled past stay where they are (dimmed); they only melt away as they leave the left edge
+            opacity: t * Math.min(1, Math.max(0, (x + width) / 40))
+            visible: x < root.width + 10 && x + width > 0 && opacity > 0.01
 
             AppTile {
                 anchors.fill: parent
                 entry: cell.modelData
                 dim: 1 - cell.k
+                ring: cell.k
             }
             MouseArea {
                 anchors.fill: parent

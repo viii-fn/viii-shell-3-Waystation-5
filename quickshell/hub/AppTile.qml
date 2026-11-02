@@ -10,6 +10,7 @@ Item {
     property real corner: Math.min(width, height) * 0.18
     property real iconScale: 0.8
     property real iconOpacity: 1
+    property real ring: 0                // 0..1: the PS5 selection ring around the tile (the home row drives it)
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
     readonly property bool isWall: entry !== null && entry !== undefined && entry.isWall === true
@@ -27,13 +28,23 @@ Item {
         return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
-    // the slot: one flat rounded rectangle
-    Rectangle {
+    // the slot: PS5 glass (soft grey bottom-left -> near black top-right)
+    GlassSlot {
         anchors.fill: parent
         radius: root.corner
-        color: Qt.rgba(0.055, 0.06, 0.075, 0.92 - 0.08 * root.dim)
-        border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.09)
+        alpha: 0.94 - 0.06 * root.dim
+    }
+
+    // selection ring: always there, only visible while the tile is focused
+    GlassRing {
+        readonly property real out: 4.5
+        x: -out; y: -out
+        width: root.width + 2 * out
+        height: root.height + 2 * out
+        radius: root.corner + out
+        thickness: 2.5
+        opacity: root.ring
+        visible: opacity > 0.01
     }
 
     Image {
