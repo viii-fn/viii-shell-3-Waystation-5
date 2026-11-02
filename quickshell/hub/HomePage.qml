@@ -208,13 +208,39 @@ Item {
                 anchors.fill: parent
                 entry: cell.modelData
                 dim: 1 - cell.k
-                ring: cell.k
+                ring: 0          // viii-ring-v2: the single floating ring below draws the selection
             }
             MouseArea {
                 anchors.fill: parent
                 onClicked: { if (cell.index === root.current) root.activate(); else root.current = cell.index; }
             }
         }
+    }
+
+    // viii-ring-v2: ONE ring that glides to the selected tile and takes its size and corner radius.
+    // It is placed between tile i0 and tile i1 by the animated focus f, so it moves with the row.
+    GlassRing {
+        id: selRing
+        readonly property real out: 3.5
+        readonly property int last: Math.max(0, root.entries.length - 1)
+        readonly property int i0: Math.max(0, Math.min(last, Math.floor(root.f)))
+        readonly property int i1: Math.min(last, i0 + 1)
+        readonly property real fr: Math.max(0, Math.min(1, root.f - i0))
+        readonly property real tw: root.wOf(i0) * (1 - fr) + root.wOf(i1) * fr
+        readonly property real tx: root.xOf(i0) * (1 - fr) + root.xOf(i1) * fr
+        readonly property real st: root.stage(i0) * (1 - fr) + root.stage(i1) * fr
+
+        x: tx + (1 - st) * 454 - out
+        y: root.rowTop + (1 - root.zoom) * 4 + (1 - st) * 26 - out
+        width: tw + 2 * out
+        height: width
+        radius: tw * 0.14 + out
+        thickness: 2.5
+        shade: true
+        z: 3
+        trigger: root.current
+        opacity: st * root.zoom * Math.min(1, Math.max(0, (tx + tw) / 40))
+        visible: root.entries.length > 0 && opacity > 0.01 && x < root.width + 10
     }
 
     // ---- the PS5 label: name under the small tiles, right of the focused tile ----
