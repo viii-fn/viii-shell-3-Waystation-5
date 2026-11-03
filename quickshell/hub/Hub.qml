@@ -207,7 +207,7 @@ PanelWindow {
     property string query: ""
     property var libAll: []              // every app, A-Z; lib.entries is this list filtered by query
     onQueryChanged: filterLib()
-    onPageChanged: { if (page === 0) { query = ""; searchOpen = false; searchFocus = false; } else { home.inCards = false; home.prompt = false; } }
+    onPageChanged: { if (page === 0) { query = ""; searchOpen = false; searchFocus = false; } else { home.inCards = false; home.inContent = false; home.prompt = false; } }
 
     function openStore() { storeOpen = true; Theme.applyWallpaper(); }
     function openHistory() {
@@ -279,7 +279,7 @@ PanelWindow {
         searchFocus = false;
         if (query !== "") query = "";
         else if (searchOpen) searchOpen = false;
-        else if (page === 0 && home.inCards) home.up();
+        else if (page === 0 && (home.inCards || home.inContent)) home.up();
         else if (tabsFocus) tabsFocus = false;
         else if (page === 1) page = 0;
         else Desk.summoned = false;
@@ -357,7 +357,8 @@ PanelWindow {
                 searchFocus: win.searchFocus
                 searchOpen: win.searchOpen
                 query: win.query
-                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal) * (1 - win.launchT)
+                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal) * (1 - win.launchT) * (1 - 0.9 * home.c)   // viii-reflow
+                y: -12 * home.c
                 visible: opacity > 0.01
                 onTabClicked: index => { win.page = index; win.tabsFocus = false; }
                 onSettingsClicked: win.openSettings()

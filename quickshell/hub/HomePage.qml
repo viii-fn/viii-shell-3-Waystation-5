@@ -3,6 +3,7 @@ import QtQuick.Shapes
 import Quickshell
 import "../core"
 
+// viii-reflow applied (Welcome move-up engine).
 // PS5 home row. The focused tile sits at the left margin; the row slides underneath it. The name
 // sits under the small tiles (right of the focused one), exactly like the PS5; the big name, the
 // Open button and the screen-time cards sit lower left. One animated number (f = focus position)
@@ -41,6 +42,39 @@ Item {
     readonly property bool explore: cur !== null && cur.isExplore === true
     property bool inCards: false
     property int cardIdx: 0
+
+    // ---- viii-reflow: Welcome content focus. Down on the Welcome tile enters the card mosaic. ----
+    property bool inContent: false
+    property int wCard: 0                          // focused Welcome card: 0 Screen time, 1 Network, 2 Most used, 3 About, 4 Batteries, 5 Weather
+    property real c: inContent ? 1 : 0             // 0 = tile focus, 1 = content focus (one number drives the whole reflow)
+    Behavior on c { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    readonly property real zEff: zoom * (1 - c)    // the selected tile takes the small size while the content has focus
+    readonly property real rowLift: 44             // tune: how far the tile row recedes upward (design px)
+    readonly property real rowDim: 0.30            // tune: how much the whole row dims (0..1)
+    readonly property real focusY: 240             // tune: top of the card mosaic while it has focus (design px)
+    readonly property real restY: 376              // top of the card mosaic at rest (unchanged)
+    readonly property var wCol: [0, 0, 1, 1, 2, 2]                          // column of each card
+    readonly property var wMid: [116.5, 304, 54, 241.5, 54, 241.5]          // vertical centre of each card (design px)
+    function wNav(dx, dy) {                        // move the card cursor; false = nothing to move to
+        const i = wCard;
+        if (dx !== 0) {
+            const col = wCol[i] + dx;
+            if (col < 0 || col > 2) return false;
+            let best = -1, bd = 1000000;
+            for (let j = 0; j < 6; j++) {
+                if (wCol[j] !== col) continue;
+                const dd = Math.abs(wMid[j] - wMid[i]);
+                if (dd < bd) { bd = dd; best = j; }
+            }
+            if (best < 0 || best === i) return false;
+            wCard = best;
+            return true;
+        }
+        const j = i + dy;                          // the two cards of a column are neighbours: 0/1, 2/3, 4/5
+        if (j < 0 || j > 5 || wCol[j] !== wCol[i]) return false;
+        wCard = j;
+        return true;
+    }
     property bool prompt: false          // "Open in browser?" dialog is up
     property int promptSel: 0            // 0 = Open, 1 = Cancel
     signal linkOpened()
@@ -49,12 +83,15 @@ Item {
     readonly property url newsSrc: newsCur ? News.src(newsCur.img) : ""
 
     function down() {                    // from the Explore tile into the cards
+        if (inContent) { wNav(0, 1); return true; }                              // viii-reflow
+        if (welcome && zoom > 0.99) { wCard = 0; inContent = true; return true; }  // viii-reflow
         if (!explore || inCards || News.items.length === 0) return false;
         cardIdx = 0;
         inCards = true;
         return true;
     }
     function up() {                      // from the cards back to the tile
+        if (inContent) { if (!wNav(0, -1)) inContent = false; return true; }     // viii-reflow
         if (!inCards) return false;
         inCards = false;
         prompt = false;
@@ -109,10 +146,10 @@ Item {
     }
     readonly property real scrollOff: {
         const fr = f - Math.floor(f);
-        return f * (small + gap) + d2 * zoom * fr * (1 - fr);
+        return f * (small + gap) + d2 * zEff * fr * (1 - fr);
     }
-    function wOf(i) { return small + d * zoom * tent(i); }
-    function xOf(i) { return padL - selMargin * zoom + i * (small + gap) + d2 * zoom * tsum(i) + selMargin * zoom * tent(i) - scrollOff; }
+    function wOf(i) { return small + d * zEff * tent(i); }
+    function xOf(i) { return padL - selMargin * zEff + i * (small + gap) + d2 * zEff * tsum(i) + selMargin * zEff * tent(i) - scrollOff; }
     function stage(i) {                    // staggered entrance, 0..1
         // the whole row slides in together; only a very slight stagger (staggerMs per tile) ripples through it
         const p = Math.max(0, Math.min(1, (intro - Math.min(i, 9) * staggerMs / 1000) / 0.55));
@@ -145,9 +182,10 @@ Item {
         }
     }
 
-    onCurrentChanged: { f = current; infoAnim.restart(); inCards = false; prompt = false; cardIdx = 0; }
+    onCurrentChanged: { f = current; infoAnim.restart(); inCards = false; prompt = false; cardIdx = 0; inContent = false; wCard = 0; }
 
     function move(dir) {
+        if (inContent) return wNav(dir, 0);                                      // viii-reflow
         if (inCards) {
             const m = Math.max(0, Math.min(News.items.length - 1, cardIdx + dir));
             if (m === cardIdx) return false;
@@ -163,7 +201,7 @@ Item {
         for (let i = 0; i < entries.length; i++) if (entries[i] && entries[i].isWelcome === true) return i;
         return 0;
     }
-    function reset() { animateF = false; current = startIndex(); f = current; animateF = true; inCards = false; prompt = false; cardIdx = 0; }
+    function reset() { animateF = false; current = startIndex(); f = current; animateF = true; inCards = false; prompt = false; cardIdx = 0; inContent = false; wCard = 0; }
     function activate() {
         if (explore) {
             if (inCards) { promptSel = 0; prompt = true; }
@@ -194,15 +232,15 @@ Item {
             required property int index
             readonly property real w: root.wOf(index)
             readonly property real t: root.stage(index)
-            readonly property real k: root.tent(index) * root.zoom      // 0 until the zoom: no ring, no raised tile, no dimming
+            readonly property real k: root.tent(index) * root.zEff      // 0 until the zoom (and while the content has focus): no ring, no raised tile, dimmed
 
             x: root.xOf(index) + (1 - t) * 454
-            y: root.rowTop + (1 - k) * 4 + (1 - t) * 26
+            y: root.rowTop + (1 - k) * 4 + (1 - t) * 26 - root.rowLift * root.c
             width: w
             height: w
             z: k
             // tiles you have scrolled past stay where they are (dimmed); they only melt away as they leave the left edge
-            opacity: t * Math.min(1, Math.max(0, (x + width) / 40))
+            opacity: t * Math.min(1, Math.max(0, (x + width) / 40)) * (1 - root.rowDim * root.c)
             visible: x < root.width + 10 && x + width > 0 && opacity > 0.01
 
             AppTile {
@@ -231,11 +269,11 @@ Item {
         readonly property real tx: root.xOf(i0) * (1 - fr) + root.xOf(i1) * fr
         readonly property real st: root.stage(i0) * (1 - fr) + root.stage(i1) * fr
         // viii-ring-v3: the ring is only there while a tile has focus (not top bar, not the Explore cards)
-        property real focT: (root.focused && !root.inCards) ? 1 : 0
+        property real focT: (root.focused && !root.inCards && !root.inContent) ? 1 : 0
         Behavior on focT { NumberAnimation { duration: 180 } }
 
         x: tx + (1 - st) * 454 - out
-        y: root.rowTop + (1 - root.zoom) * 4 + (1 - st) * 26 - out
+        y: root.rowTop + (1 - root.zoom) * 4 + (1 - st) * 26 - out - root.rowLift * root.c
         width: tw + 2 * out
         height: width
         radius: tw * 0.14 + out
@@ -249,8 +287,8 @@ Item {
 
     // ---- the PS5 label: name under the small tiles, right of the focused tile ----
     Txt {
-        x: root.padL + root.sel + root.selMargin + 10
-        y: root.rowTop + 4 + root.small + 12
+        x: root.padL + (root.sel + root.selMargin + 10) * (1 - root.c) + (root.small + 12) * root.c
+        y: root.rowTop + 4 + root.small + 12 - root.rowLift * root.c
         width: 700
         text: root.cur ? root.cur.name : ""
         font.pixelSize: 24
@@ -359,7 +397,9 @@ Item {
     WelcomeGrid {
         shown: root.shown                     // welcome-data: only fetch/animate while the hub is on screen
         x: root.padL
-        y: 376
+        y: root.restY + (root.focusY - root.restY) * root.c
+        lift: root.c
+        focusIdx: root.inContent ? root.wCard : -1
         opacity: root.welcome ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }

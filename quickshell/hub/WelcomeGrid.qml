@@ -6,6 +6,7 @@ import Quickshell.Networking
 import Quickshell.Services.UPower
 import "../core"
 
+// viii-reflow applied (pill row + card focus ring).
 // The PS5 "Games" card grid, shown while the Welcome tile is selected.
 //
 //   col 1: Screen time (tall)    col 2: Most used (small)   col 3: Batteries (small)
@@ -17,6 +18,8 @@ Item {
     id: root
     property bool shown: true
     readonly property bool active: shown && visible
+    property real lift: 0                  // viii-reflow: 0 = resting, 1 = the cards have focus (HomePage.c)
+    property int focusIdx: -1              // focused card while the cards have focus
 
     readonly property real colW: 358
     readonly property real gutter: 23
@@ -206,6 +209,10 @@ Item {
     // ======================= building blocks =======================
     component Card: Item {
         id: card
+        property int idx: -1
+        property real foc: root.focusIdx === idx ? 1 : 0
+        Behavior on foc { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        opacity: 1 - 0.22 * root.lift * (1 - foc)       // viii-reflow: unfocused cards dim a little while the cards have focus
         property string title: ""
         property string icon: ""               // SVG path, 24x24, drawn as a line icon
         default property alias content: body.data
@@ -315,11 +322,56 @@ Item {
         }
     }
 
+    // ============================= viii-reflow: pill row + card focus ring =============================
+    component Pill: Rectangle {
+        id: pill
+        property string label: ""
+        height: 26
+        width: pt.implicitWidth + 40
+        radius: 13
+        color: Qt.rgba(0.10, 0.11, 0.14, 0.78)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.10)
+        Rectangle { x: 10; y: 8; width: 10; height: 10; radius: 5; color: Theme.accent }
+        Txt { id: pt; x: 28; anchors.verticalCenter: parent.verticalCenter; text: pill.label; font.pixelSize: 12 }
+    }
+    Row {
+        x: 0; y: -36
+        spacing: 10
+        Pill { label: Qt.formatDate(new Date(root.nowSec * 1000), "dddd, d MMMM") }
+        Pill { label: root.online ? "Online \u00b7 " + root.netMain : "Offline" }
+    }
+
+    readonly property var cardX: [0, 0, 1, 1, 2, 2]
+    readonly property var cardY: [0, tall + rowGap, 0, small + rowGap, 0, small + rowGap]
+    readonly property var cardH: [tall, small, small, tall, small, tall]
+    GlassRing {
+        id: cardRing
+        readonly property int fi: Math.max(0, Math.min(5, root.focusIdx))
+        readonly property real out: 3.5
+        x: root.cardX[fi] * (root.colW + root.gutter) - out
+        y: root.cardY[fi] - out
+        width: root.colW + 2 * out
+        height: root.cardH[fi] + 2 * out
+        radius: 16 + out
+        thickness: 2.5
+        shade: true
+        trigger: root.focusIdx
+        z: 10
+        opacity: Math.max(0, Math.min(1, (root.lift - 0.35) / 0.65))
+        visible: opacity > 0.01 && root.active
+        Behavior on x { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on y { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on width { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on height { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    }
+
     // ============================= column 1 =============================
     Card {
         x: 0; y: 0
         height: root.tall
         title: "Screen time"
+        idx: 0
         icon: "M12 3 a9 9 0 1 0 0.001 0 Z M12 7 V12 L15 14"
 
         Txt { x: 18; y: 46; text: ScreenTime.fmt(root.weekSecs[6]); font.pixelSize: 40; font.weight: Font.Bold }
@@ -364,6 +416,7 @@ Item {
         x: 0; y: root.tall + root.rowGap
         height: root.small
         title: "Network"
+        idx: 1
         icon: "M2 9 A15 15 0 0 1 22 9 M5.5 12.5 A10 10 0 0 1 18.5 12.5 M9 16 A5 5 0 0 1 15 16 M12 19.5 H12.01"
 
         // loading ring while there is no connection
@@ -424,6 +477,7 @@ Item {
         x: root.colW + root.gutter; y: 0
         height: root.small
         title: "Most used"
+        idx: 2
         icon: "M12 2.5 L14.9 8.6 L21.5 9.4 L16.6 13.9 L17.9 20.5 L12 17.2 L6.1 20.5 L7.4 13.9 L2.5 9.4 L9.1 8.6 Z"
 
         Txt { visible: !root.topApp; x: 18; y: 56; text: "Nothing recorded yet"; font.pixelSize: 14; color: Theme.fgDim }
@@ -458,6 +512,7 @@ Item {
         x: root.colW + root.gutter; y: root.small + root.rowGap
         height: root.tall
         title: "About"
+        idx: 3
         icon: "M12 3 a9 9 0 1 0 0.001 0 Z M12 11 V16.5 M12 7.8 H12.01"
 
         Txt { visible: !root.topApp; x: 18; y: 54; width: parent.width - 36; wrapMode: Text.WordWrap; maximumLineCount: 3; text: "Use an app for a while and a little about your favourite shows up here."; font.pixelSize: 14; color: Theme.fgDim }
@@ -511,6 +566,7 @@ Item {
         x: 2 * (root.colW + root.gutter); y: 0
         height: root.small
         title: "Batteries"
+        idx: 4
         icon: "M3 8 H18 A1 1 0 0 1 19 9 V15 A1 1 0 0 1 18 16 H3 A1 1 0 0 1 2 15 V9 A1 1 0 0 1 3 8 Z M21.5 11 V13"
 
         Txt { visible: root.batts.length === 0; x: 18; y: 56; text: "No battery detected"; font.pixelSize: 14; color: Theme.fgDim }
@@ -541,6 +597,7 @@ Item {
         x: 2 * (root.colW + root.gutter); y: root.small + root.rowGap
         height: root.tall
         title: "Weather"
+        idx: 5
         icon: "M12 8 a4 4 0 1 0 0.001 0 Z M12 2 V4 M12 20 V22 M2 12 H4 M20 12 H22 M4.9 4.9 L6.3 6.3 M17.7 17.7 L19.1 19.1 M4.9 19.1 L6.3 17.7 M17.7 6.3 L19.1 4.9"
 
         Txt {
