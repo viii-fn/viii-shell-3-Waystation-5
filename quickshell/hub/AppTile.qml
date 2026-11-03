@@ -11,13 +11,14 @@ Item {
     property real corner: Math.min(width, height) * 0.14
     property real iconScale: 0.8
     property real iconOpacity: 1
+    property real tileFade: 1            // 1 = whole tile visible, 0 = slot and icon completely faded out (other tiles while a page is open)
     property real ring: 0                // 0..1: the PS5 selection ring around the tile (the home row drives it)
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
     readonly property bool isWall: entry !== null && entry !== undefined && entry.isWall === true
     readonly property bool isWelcome: entry !== null && entry !== undefined && entry.isWelcome === true
     readonly property bool isExplore: entry !== null && entry !== undefined && entry.isExplore === true
-    readonly property real shade: iconOpacity * (1 - 0.10 * dim)
+    readonly property real shade: iconOpacity * tileFade * (1 - 0.10 * dim)
 
     readonly property var pal: {
         void Apps.palettes;
@@ -36,6 +37,7 @@ Item {
         anchors.fill: parent
         radius: root.corner
         alpha: 1
+        opacity: root.tileFade
     }
 
     // selection ring: always there, only visible while the tile is focused

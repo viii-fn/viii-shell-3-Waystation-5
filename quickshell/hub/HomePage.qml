@@ -53,26 +53,37 @@ Item {
     readonly property real rowDim: 0.30            // tune: how much the whole row dims (0..1)
     readonly property real focusY: 240             // tune: top of the card mosaic while it has focus (design px)
     readonly property real restY: 376              // top of the card mosaic at rest (unchanged)
-    readonly property var wCol: [0, 0, 1, 1, 2, 2]                          // column of each card
-    readonly property var wMid: [116.5, 304, 54, 241.5, 54, 241.5]          // vertical centre of each card (design px)
+    // Welcome card grid: two rows of cards (row 1 existing, row 2 widgets). Kept in sync with WelcomeGrid.qml.
+    readonly property var wCol: [0, 0, 1, 1, 2, 2, 0, 1, 2, 2]              // column of each card
+    readonly property var wMid: [116.5, 304, 54, 241.5, 54, 241.5, 497.5, 497.5, 435, 560]   // vertical centre (design px)
+    readonly property int wCount: 10
     function wNav(dx, dy) {                        // move the card cursor; false = nothing to move to
-        const i = wCard;
+        const i = Math.max(0, Math.min(wCount - 1, wCard));
+        const cx = wMid[i];
         if (dx !== 0) {
             const col = wCol[i] + dx;
             if (col < 0 || col > 2) return false;
             let best = -1, bd = 1000000;
-            for (let j = 0; j < 6; j++) {
+            for (let j = 0; j < wCount; j++) {
                 if (wCol[j] !== col) continue;
-                const dd = Math.abs(wMid[j] - wMid[i]);
+                const dd = Math.abs(wMid[j] - cx);
                 if (dd < bd) { bd = dd; best = j; }
             }
             if (best < 0 || best === i) return false;
             wCard = best;
             return true;
         }
-        const j = i + dy;                          // the two cards of a column are neighbours: 0/1, 2/3, 4/5
-        if (j < 0 || j > 5 || wCol[j] !== wCol[i]) return false;
-        wCard = j;
+        // Same column: pick the nearest card above/below the current one.
+        let best = -1, bd = 1000000;
+        for (let j = 0; j < wCount; j++) {
+            if (wCol[j] !== wCol[i]) continue;
+            const gap = wMid[j] - cx;
+            if (dy > 0 ? gap <= 1 : gap >= -1) continue;
+            const dd = Math.abs(gap);
+            if (dd < bd) { bd = dd; best = j; }
+        }
+        if (best < 0) return false;
+        wCard = best;
         return true;
     }
     property bool prompt: false          // "Open in browser?" dialog is up
@@ -247,6 +258,8 @@ Item {
                 anchors.fill: parent
                 entry: cell.modelData
                 dim: 1 - cell.k
+                // While a tile's page is open, every tile except the selected one is fully faded out (slot + icon).
+                tileFade: cell.index === root.current ? 1 : 1 - root.c
                 ring: 0          // viii-ring-v2: the single floating ring below draws the selection
             }
             MouseArea {
@@ -400,6 +413,7 @@ Item {
         y: root.restY + (root.focusY - root.restY) * root.c
         lift: root.c
         focusIdx: root.inContent ? root.wCard : -1
+        viewH: 768 - root.focusY
         opacity: root.welcome ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }

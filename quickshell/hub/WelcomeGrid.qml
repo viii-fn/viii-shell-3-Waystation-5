@@ -11,6 +11,10 @@ import "../core"
 //
 //   col 1: Screen time (tall)    col 2: Most used (small)   col 3: Batteries (small)
 //          Network (small)              About (tall)               Weather (tall)
+//   row 2: System (tall)         News (tall)                Clock (small) + Notifications (small)
+//
+// Row 2 peeks at the bottom edge at rest and is reached with Down; the mosaic scrolls so row 2
+// fills the focused viewport (HomePage.focusY..768).
 //
 // Data rules (2 GB RAM): nothing runs while the grid is hidden; web data (weather, about) is cached on disk,
 // read from the cache first, and only fetched 2 s after the grid appears (never during the intro).
@@ -20,14 +24,23 @@ Item {
     readonly property bool active: shown && visible
     property real lift: 0                  // viii-reflow: 0 = resting, 1 = the cards have focus (HomePage.c)
     property int focusIdx: -1              // focused card while the cards have focus
+    property real viewH: 528               // visible height of the grid while it has focus (HomePage.focusY..768)
+    property real scrollY: 0               // row 2 is reached by scrolling the mosaic up
 
     readonly property real colW: 358
     readonly property real gutter: 23
     readonly property real tall: 233
     readonly property real small: 108
     readonly property real rowGap: 17
+    readonly property real rowH: tall + rowGap + small
+    readonly property real rowGapY: 23
+    readonly property real row2Y: rowH + rowGapY
+    readonly property real contentH: row2Y + rowH
     width: 3 * colW + 2 * gutter
-    height: tall + rowGap + small
+    height: contentH
+
+    function topOf(i) { return cardY[i] - root.scrollY; }
+    readonly property real row2Scroll: Math.max(0, contentH - viewH)
 
     readonly property string home: Quickshell.env("HOME")
     property real nowSec: Date.now() / 1000
@@ -77,6 +90,117 @@ Item {
             out.push({ name: d.model || "Device", pct: d.percentage, charging: isCharging(d) });
         }
         return out.slice(0, 3);
+    }
+
+    // ======================= system monitor (row 2 widget) =======================
+    // /proc is read only while the widget row is on screen; the disk check runs once a minute.
+    readonly property bool sysOn: root.active && root.lift > 0.6 && root.scrollY > 20
+    property real cpuPct: 0
+    property real memUsed: 0
+    property real memTotal: 1
+    property real diskFree: 0
+    property real diskTotal: 0
+    property real uptimeSec: 0
+    property double cpuLastTotal: 0
+    property double cpuLastIdle: 0
+
+    function parseCpu(txt) {
+        const line = String(txt).split("\n")[0].trim();
+        const p = line.split(/\s+/);
+        if (p.length < 5) return;
+        let total = 0;
+        for (let i = 1; i < p.length; i++) total += Number(p[i]) || 0;
+        const idle = (Number(p[4]) || 0) + (Number(p[5]) || 0);
+        if (root.cpuLastTotal > 0 && total > root.cpuLastTotal) {
+            const dt = total - root.cpuLastTotal;
+            const di = idle - root.cpuLastIdle;
+            root.cpuPct = Math.max(0, Math.min(100, 100 * (1 - di / dt)));
+        }
+        root.cpuLastTotal = total;
+        root.cpuLastIdle = idle;
+    }
+    function parseMem(txt) {
+        const lines = String(txt).split("\n");
+        let total = 0, avail = 0;
+        for (let i = 0; i < lines.length; i++) {
+            const parts = lines[i].split(":");
+            if (parts.length < 2) continue;
+            const v = Number(parts[1].trim().split(" ")[0]) || 0;
+            if (parts[0] === "MemTotal") total = v;
+            else if (parts[0] === "MemAvailable") avail = v;
+        }
+        if (total > 0) {
+            root.memTotal = total * 1024;
+            root.memUsed = Math.max(0, (total - avail) * 1024);
+        }
+    }
+    function parseUptime(txt) {
+        const v = Number(String(txt).trim().split(" ")[0]);
+        if (v > 0) root.uptimeSec = v;
+    }
+    function parseDisk(txt) {
+        const lines = String(txt).trim().split("\n");
+        if (lines.length < 2) return;
+        const f = lines[1].trim().split(/\s+/);
+        if (f.length < 4) return;
+        root.diskTotal = Number(f[1]) || 0;
+        root.diskFree = Number(f[3]) || 0;
+    }
+    function fmtBytes(b) {
+        const g = b / 1073741824;
+        return (g >= 10 ? Math.round(g) : g.toFixed(1)) + " GB";
+    }
+    function fmtUptime(s) {
+        const d = Math.floor(s / 86400);
+        const h = Math.floor((s % 86400) / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        return d > 0 ? d + "d " + h + "h" : (h > 0 ? h + "h " + m + "m" : m + "m");
+    }
+    readonly property var latestNotif: Notifs.history.length > 0 ? Notifs.history[0] : null
+    function notifAgo(t) {
+        const m = Math.max(0, Math.round((root.nowSec * 1000 - t) / 60000));
+        return m < 60 ? m + "m ago" : (m < 2880 ? Math.round(m / 60) + "h ago" : Math.round(m / 1440) + "d ago");
+    }
+
+    FileView {
+        id: cpuFile
+        path: "/proc/stat"
+        printErrors: false
+        onLoaded: root.parseCpu(cpuFile.text())
+    }
+    FileView {
+        id: memFile
+        path: "/proc/meminfo"
+        printErrors: false
+        onLoaded: root.parseMem(memFile.text())
+    }
+    FileView {
+        id: upFile
+        path: "/proc/uptime"
+        printErrors: false
+        onLoaded: root.parseUptime(upFile.text())
+    }
+    Process {
+        id: diskProc
+        command: ["df", "-B1", "-P", "/"]
+        stdout: StdioCollector { onStreamFinished: root.parseDisk(this.text) }
+    }
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.sysOn
+        onTriggered: { cpuFile.reload(); memFile.reload(); upFile.reload(); }
+    }
+    Timer {
+        interval: 60000
+        repeat: true
+        running: root.sysOn
+        onTriggered: { if (!diskProc.running) diskProc.running = true; }
+    }
+    onSysOnChanged: {
+        if (!sysOn) return;
+        cpuFile.reload(); memFile.reload(); upFile.reload();
+        if (!diskProc.running) diskProc.running = true;
     }
 
     // ======================= screen time + most used =======================
@@ -197,22 +321,23 @@ Item {
 
     // ======================= scheduling =======================
     function refreshAll() {
-        if (!active || !online) return;
+        if (!active) return;
         nowSec = Date.now() / 1000;
+        if (!online) return;
         if (wxStale()) fetchWeather();
         if (!about) fetchAbout();
+        // the News widget shows the same cache Explore uses; refresh only while Welcome is on screen
+        if (News.items.length === 0 || News.day !== News.today()) News.refresh();
     }
     Timer { id: kick; interval: 2000; onTriggered: root.refreshAll() }
-    Timer { interval: 30000; repeat: true; running: root.active && root.online; onTriggered: root.refreshAll() }
+    Timer { interval: 30000; repeat: true; running: root.active; onTriggered: root.refreshAll() }
     onOnlineChanged: { if (online) { aboutTried = ({}); kick.restart(); } }
 
     // ======================= building blocks =======================
     component Card: Item {
         id: card
         property int idx: -1
-        property real foc: root.focusIdx === idx ? 1 : 0
-        Behavior on foc { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-        opacity: 1 - 0.22 * root.lift * (1 - foc)       // viii-reflow: unfocused cards dim a little while the cards have focus
+        opacity: 1                                          // every card stays fully opaque; the ring marks focus
         property string title: ""
         property string icon: ""               // SVG path, 24x24, drawn as a line icon
         default property alias content: body.data
@@ -342,15 +467,27 @@ Item {
         Pill { label: root.online ? "Online \u00b7 " + root.netMain : "Offline" }
     }
 
-    readonly property var cardX: [0, 0, 1, 1, 2, 2]
-    readonly property var cardY: [0, tall + rowGap, 0, small + rowGap, 0, small + rowGap]
-    readonly property var cardH: [tall, small, small, tall, small, tall]
+    // row 1: the six original cards; row 2: four widgets (System, News, Clock, Notifications)
+    readonly property var cardX: [0, 0, 1, 1, 2, 2, 0, 1, 2, 2]
+    readonly property var cardY: [0, tall + rowGap, 0, small + rowGap, 0, small + rowGap, row2Y, row2Y, row2Y, row2Y + small + rowGap]
+    readonly property var cardH: [tall, small, small, tall, small, tall, tall, tall, small, small]
+    Behavior on scrollY { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    onFocusIdxChanged: { if (focusIdx >= 0) scrollY = focusIdx < 6 ? 0 : row2Scroll; }
+    onLiftChanged: { if (lift < 0.05) scrollY = 0; }
+
+    // One clipped viewport keeps the scrolled-up rows from sliding over the tile row above.
+    Item {
+        id: viewport
+        width: root.width
+        height: root.viewH
+        clip: true
+
     GlassRing {
         id: cardRing
-        readonly property int fi: Math.max(0, Math.min(5, root.focusIdx))
+        readonly property int fi: Math.max(0, Math.min(root.cardX.length - 1, root.focusIdx))
         readonly property real out: 3.5
         x: root.cardX[fi] * (root.colW + root.gutter) - out
-        y: root.cardY[fi] - out
+        y: root.topOf(fi) - out
         width: root.colW + 2 * out
         height: root.cardH[fi] + 2 * out
         radius: 16 + out
@@ -368,7 +505,7 @@ Item {
 
     // ============================= column 1 =============================
     Card {
-        x: 0; y: 0
+        x: 0; y: root.topOf(0)
         height: root.tall
         title: "Screen time"
         idx: 0
@@ -413,7 +550,7 @@ Item {
     }
 
     Card {
-        x: 0; y: root.tall + root.rowGap
+        x: 0; y: root.topOf(1)
         height: root.small
         title: "Network"
         idx: 1
@@ -474,7 +611,7 @@ Item {
 
     // ============================= column 2 =============================
     Card {
-        x: root.colW + root.gutter; y: 0
+        x: root.colW + root.gutter; y: root.topOf(2)
         height: root.small
         title: "Most used"
         idx: 2
@@ -509,7 +646,7 @@ Item {
     }
 
     Card {
-        x: root.colW + root.gutter; y: root.small + root.rowGap
+        x: root.colW + root.gutter; y: root.topOf(3)
         height: root.tall
         title: "About"
         idx: 3
@@ -563,7 +700,7 @@ Item {
 
     // ============================= column 3 =============================
     Card {
-        x: 2 * (root.colW + root.gutter); y: 0
+        x: 2 * (root.colW + root.gutter); y: root.topOf(4)
         height: root.small
         title: "Batteries"
         idx: 4
@@ -594,7 +731,7 @@ Item {
     }
 
     Card {
-        x: 2 * (root.colW + root.gutter); y: root.small + root.rowGap
+        x: 2 * (root.colW + root.gutter); y: root.topOf(5)
         height: root.tall
         title: "Weather"
         idx: 5
@@ -658,5 +795,135 @@ Item {
                 font.pixelSize: 12; color: Qt.rgba(1, 1, 1, 0.40)
             }
         }
+    }
+
+    // ============================= row 2: extra widgets =============================
+    Card {
+        x: 0; y: root.topOf(6)
+        height: root.tall
+        title: "System"
+        idx: 6
+        icon: "M4 5 H20 V15 H4 Z M8 19 H16 M12 15 V19"
+
+        Txt { x: 18; y: 46; text: Math.round(root.cpuPct) + "%"; font.pixelSize: 40; font.weight: Font.Bold }
+        Txt { x: 20; y: 98; text: "CPU"; font.pixelSize: 13; color: Theme.fgDim }
+        Txt { anchors.right: parent.right; anchors.rightMargin: 18; y: 52; text: root.uptimeSec > 0 ? "Up " + root.fmtUptime(root.uptimeSec) : ""; font.pixelSize: 16; font.weight: Font.DemiBold }
+        Txt { anchors.right: parent.right; anchors.rightMargin: 18; y: 76; text: "Uptime"; font.pixelSize: 13; color: Theme.fgDim }
+
+        Txt { x: 18; y: 128; text: "Memory"; font.pixelSize: 13; color: Theme.fgDim }
+        Txt { anchors.right: parent.right; anchors.rightMargin: 18; y: 126; text: root.fmtBytes(root.memUsed) + " of " + root.fmtBytes(root.memTotal); font.pixelSize: 13; font.weight: Font.DemiBold }
+        Rectangle {
+            x: 18; y: 148
+            width: parent.width - 36; height: 5; radius: 2.5
+            color: Qt.rgba(1, 1, 1, 0.12)
+            Rectangle {
+                height: parent.height; radius: 2.5
+                width: parent.width * Math.min(1, root.memUsed / Math.max(1, root.memTotal))
+                color: Theme.accent
+            }
+        }
+
+        Txt { x: 18; y: 170; text: "Disk"; font.pixelSize: 13; color: Theme.fgDim }
+        Txt { anchors.right: parent.right; anchors.rightMargin: 18; y: 168; text: root.diskTotal > 0 ? root.fmtBytes(root.diskFree) + " free" : ""; font.pixelSize: 13; font.weight: Font.DemiBold }
+        Rectangle {
+            x: 18; y: 192
+            width: parent.width - 36; height: 5; radius: 2.5
+            color: Qt.rgba(1, 1, 1, 0.12)
+            Rectangle {
+                height: parent.height; radius: 2.5
+                width: parent.width * (root.diskTotal > 0 ? Math.min(1, (root.diskTotal - root.diskFree) / root.diskTotal) : 0)
+                color: Theme.accent
+            }
+        }
+    }
+
+    Card {
+        x: root.colW + root.gutter; y: root.topOf(7)
+        height: root.tall
+        title: "News"
+        idx: 7
+        icon: "M4 5 H20 V19 H4 Z M7 9 H17 M7 12 H17 M7 15 H13"
+
+        Txt {
+            visible: News.items.length === 0
+            x: 18; y: 54; width: parent.width - 36
+            wrapMode: Text.WordWrap; maximumLineCount: 2
+            text: root.online ? "No news this week" : "Waiting for network\u2026"
+            font.pixelSize: 14; color: Theme.fgDim
+        }
+        Repeater {
+            model: Math.min(3, News.items.length)
+            delegate: Item {
+                id: nrow
+                required property int index
+                readonly property var it: News.items[index]
+                width: root.colW
+                height: 56
+                y: 46 + index * 58
+
+                Txt {
+                    x: 18; y: 0; width: parent.width - 36
+                    text: nrow.it ? (String(nrow.it.source || "News") + "  \u00b7  " + News.ago(nrow.it.ts)) : ""
+                    font.pixelSize: 11; color: Theme.fgDim
+                }
+                Txt {
+                    x: 18; y: 17; width: parent.width - 36
+                    text: nrow.it ? String(nrow.it.title) : ""
+                    wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                    font.pixelSize: 14; lineHeight: 1.05
+                }
+                Rectangle {
+                    x: 18; y: 54; width: parent.width - 36; height: 1
+                    color: Qt.rgba(1, 1, 1, 0.10)
+                    visible: nrow.index < 2
+                }
+            }
+        }
+    }
+
+    Card {
+        x: 2 * (root.colW + root.gutter); y: root.topOf(8)
+        height: root.small
+        title: "Clock"
+        idx: 8
+        icon: "M12 3 a9 9 0 1 0 0.001 0 Z M12 7 V12 L15 14"
+
+        Txt { x: 18; y: 44; text: Qt.formatTime(new Date(root.nowSec * 1000), "HH:mm"); font.pixelSize: 36; font.weight: Font.Bold }
+        Txt { x: 20; y: 88; width: parent.width - 36; text: Qt.formatDate(new Date(root.nowSec * 1000), "dddd, d MMMM"); font.pixelSize: 13; color: Theme.fgDim }
+    }
+
+    Card {
+        x: 2 * (root.colW + root.gutter); y: root.topOf(9)
+        height: root.small
+        title: "Notifications"
+        idx: 9
+        icon: "M6 9 A6 6 0 0 1 18 9 V14 L20 17 H4 L6 14 Z M10 20 A2 2 0 0 0 14 20"
+
+        Txt {
+            anchors.right: parent.right; anchors.rightMargin: 18; y: 18
+            text: Notifs.history.length > 0 ? String(Notifs.history.length) : ""
+            font.pixelSize: 14; font.weight: Font.DemiBold; color: Theme.accent
+        }
+        Txt {
+            visible: !root.latestNotif
+            x: 18; y: 50
+            text: "All caught up"
+            font.pixelSize: 14; color: Theme.fgDim
+        }
+        Txt {
+            visible: !!root.latestNotif
+            x: 18; y: 44; width: parent.width - 80
+            text: root.latestNotif ? String(root.latestNotif.title || root.latestNotif.body || "Notification") : ""
+            elide: Text.ElideRight
+            font.pixelSize: 14; font.weight: Font.DemiBold
+        }
+        Txt {
+            visible: !!root.latestNotif
+            x: 18; y: 68; width: parent.width - 36
+            text: root.latestNotif ? (String(root.latestNotif.app || "System") + "  \u00b7  " + root.notifAgo(root.latestNotif.t)) : ""
+            elide: Text.ElideRight
+            font.pixelSize: 12; color: Theme.fgDim
+        }
+    }
     }
 }
