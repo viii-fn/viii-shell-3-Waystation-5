@@ -125,8 +125,8 @@ Item {
     }
 
     // ---- intro timeline: slide in (equal small tiles) -> rest (holdMs) -> the focused tile zooms (zoomMs) ----
-    readonly property int holdMs: 600
-    readonly property int zoomMs: 750
+    readonly property int holdMs: 700
+    readonly property int zoomMs: 450
     readonly property int staggerMs: 6
     readonly property var zoomCurve: [0.30, 0.0, 0.12, 1.0, 1, 1]          // soft start, long landing
     readonly property real infoZ: Math.max(0, Math.min(1, (zoom - 0.20) / 0.80))   // title and cards arrive during the 2nd part of the zoom
