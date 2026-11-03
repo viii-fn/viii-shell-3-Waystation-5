@@ -347,28 +347,14 @@ Item {
         Rectangle {
             y: 116
             width: 150; height: 46; radius: 23
-            color: Qt.rgba(0.17, 0.18, 0.21, 0.88)
+            color: Qt.rgba(0.5, 0.5, 0.5, 0.2)
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.10)
             Row {
                 anchors.centerIn: parent
                 spacing: 10
-                Item {
-                    width: 14; height: 22
-                    Shape {
-                        y: 3
-                        ShapePath {
-                            strokeWidth: -1
-                            fillColor: Theme.fg
-                            startX: 0; startY: 0
-                            PathLine { x: 14; y: 8 }
-                            PathLine { x: 0; y: 16 }
-                            PathLine { x: 0; y: 0 }
-                        }
-                    }
-                }
                 Txt {
-                    text: root.special ? "Browse" : "Open"
+                    text: root.special ? "Browse" : "Open App"
                     font.pixelSize: 18
                     font.weight: Font.DemiBold
                 }
