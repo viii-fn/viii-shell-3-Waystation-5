@@ -40,6 +40,8 @@ Item {
 
     // ---- viii-explore: the news card row under the Explore tile ----
     readonly property bool explore: cur !== null && cur.isExplore === true
+    // A normal application tile: it gets the same focusable content mosaic as Welcome.
+    readonly property bool appPage: cur !== null && cur !== undefined && !special && !welcome && !explore
     property bool inCards: false
     property int cardIdx: 0
 
@@ -53,20 +55,25 @@ Item {
     readonly property real rowDim: 0.30            // tune: how much the whole row dims (0..1)
     readonly property real focusY: 240             // tune: top of the card mosaic while it has focus (design px)
     readonly property real restY: 376              // top of the card mosaic at rest (unchanged)
-    // Welcome card grid: two rows of cards (row 1 existing, row 2 widgets). Kept in sync with WelcomeGrid.qml.
-    readonly property var wCol: [0, 0, 1, 1, 2, 2, 0, 1, 2, 2]              // column of each card
+    // Content card grids. Welcome has 10 cards (two rows); a regular app page has 6
+    // (3 small screen-time cards on top, 3 tall widgets below). Kept in sync with the grids.
+    readonly property var wCol: [0, 0, 1, 1, 2, 2, 0, 1, 2, 2]              // column of each Welcome card
     readonly property var wMid: [116.5, 304, 54, 241.5, 54, 241.5, 497.5, 497.5, 435, 560]   // vertical centre (design px)
-    readonly property int wCount: 10
+    readonly property var aCol: [0, 1, 2, 0, 1, 2]                          // column of each app card
+    readonly property var aMid: [54, 54, 54, 247.5, 247.5, 247.5]           // vertical centre (design px)
+    readonly property var cCol: root.appPage ? aCol : wCol
+    readonly property var cMid: root.appPage ? aMid : wMid
+    readonly property int cCount: root.appPage ? aCol.length : 10
     function wNav(dx, dy) {                        // move the card cursor; false = nothing to move to
-        const i = Math.max(0, Math.min(wCount - 1, wCard));
-        const cx = wMid[i];
+        const i = Math.max(0, Math.min(cCount - 1, wCard));
+        const cx = cMid[i];
         if (dx !== 0) {
-            const col = wCol[i] + dx;
+            const col = cCol[i] + dx;
             if (col < 0 || col > 2) return false;
             let best = -1, bd = 1000000;
-            for (let j = 0; j < wCount; j++) {
-                if (wCol[j] !== col) continue;
-                const dd = Math.abs(wMid[j] - cx);
+            for (let j = 0; j < cCount; j++) {
+                if (cCol[j] !== col) continue;
+                const dd = Math.abs(cMid[j] - cx);
                 if (dd < bd) { bd = dd; best = j; }
             }
             if (best < 0 || best === i) return false;
@@ -75,9 +82,9 @@ Item {
         }
         // Same column: pick the nearest card above/below the current one.
         let best = -1, bd = 1000000;
-        for (let j = 0; j < wCount; j++) {
-            if (wCol[j] !== wCol[i]) continue;
-            const gap = wMid[j] - cx;
+        for (let j = 0; j < cCount; j++) {
+            if (cCol[j] !== cCol[i]) continue;
+            const gap = cMid[j] - cx;
             if (dy > 0 ? gap <= 1 : gap >= -1) continue;
             const dd = Math.abs(gap);
             if (dd < bd) { bd = dd; best = j; }
@@ -93,16 +100,16 @@ Item {
     readonly property var newsCur: (explore && News.items.length > 0) ? News.items[Math.min(newsIdx, News.items.length - 1)] : null
     readonly property url newsSrc: newsCur ? News.src(newsCur.img) : ""
 
-    function down() {                    // from the Explore tile into the cards
+    function down() {                    // from a tile into its content cards
         if (inContent) { wNav(0, 1); return true; }                              // viii-reflow
-        if (welcome && zoom > 0.99) { wCard = 0; inContent = true; return true; }  // viii-reflow
+        if ((welcome || appPage) && zoom > 0.99) { wCard = 0; inContent = true; return true; }  // viii-reflow
         if (!explore || inCards || News.items.length === 0) return false;
         cardIdx = 0;
         inCards = true;
         return true;
     }
-    function up() {                      // from the cards back to the tile
-        if (inContent) { if (!wNav(0, -1)) inContent = false; return true; }     // viii-reflow
+    function up(force) {                 // from the cards back to the tile
+        if (inContent) { if (!force && wNav(0, -1)) return true; inContent = false; return true; }     // viii-reflow
         if (!inCards) return false;
         inCards = false;
         prompt = false;
@@ -141,7 +148,7 @@ Item {
         let m = 0;
         for (let i = 0; i < entries.length; i++) {
             const e = entries[i];
-            if (e && e.isLibrary !== true && e.isWelcome !== true && e.isExplore !== true) m = Math.max(m, ScreenTime.sum(e, 7));
+            if (e && e.isLibrary !== true && e.isWall !== true && e.isWelcome !== true && e.isExplore !== true) m = Math.max(m, ScreenTime.sum(e, 7));
         }
         return m;
     }
@@ -214,6 +221,7 @@ Item {
     }
     function reset() { animateF = false; current = startIndex(); f = current; animateF = true; inCards = false; prompt = false; cardIdx = 0; inContent = false; wCard = 0; }
     function activate() {
+        if (root.inContent) return;      // content cards are display-only: Enter does not launch from here
         if (explore) {
             if (inCards) { promptSel = 0; prompt = true; }
             else down();
@@ -317,7 +325,7 @@ Item {
         y: 410
         width: 760
         height: 170
-        opacity: (root.welcome || root.explore) ? 0 : root.infoZ * root.infoIn
+        opacity: (root.welcome || root.explore) ? 0 : root.infoZ * root.infoIn * (1 - root.c)
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
 
@@ -379,13 +387,16 @@ Item {
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }
 
-    // screen-time cards (the PS5's "Must see" row, per-app screen time instead of trophies)
-    InfoCards {
-        x: root.padL
-        y: 584
+    // regular app pages: screen-time mosaic plus tall widgets (About, System, News)
+    AppContent {
         entry: root.cur
+        shown: root.shown
         topSum: root.topSum
-        opacity: (root.special || root.welcome || root.explore) ? 0 : root.infoZ * root.infoIn
+        x: root.padL
+        y: 584 + (root.focusY - 584) * root.c
+        lift: root.c
+        focusIdx: root.inContent ? root.wCard : -1
+        opacity: root.appPage ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }

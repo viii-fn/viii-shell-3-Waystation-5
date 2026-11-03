@@ -484,7 +484,11 @@ Item {
 
     GlassRing {
         id: cardRing
-        readonly property int fi: Math.max(0, Math.min(root.cardX.length - 1, root.focusIdx))
+        // Keep the ring on the last focused card while it fades out, instead of snapping
+        // back to the first card as soon as focusIdx becomes -1.
+        property int lastFi: 0
+        readonly property int fi: Math.max(0, Math.min(root.cardX.length - 1, root.focusIdx >= 0 ? root.focusIdx : lastFi))
+        onFiChanged: if (root.focusIdx >= 0) lastFi = fi
         readonly property real out: 3.5
         x: root.cardX[fi] * (root.colW + root.gutter) - out
         y: root.topOf(fi) - out
@@ -497,8 +501,13 @@ Item {
         z: 10
         opacity: Math.max(0, Math.min(1, (root.lift - 0.35) / 0.65))
         visible: opacity > 0.01 && root.active
+        // During a row switch the ring follows scrollY directly (which is already animated).
+        // A second y animation on top of it made the ring lag behind and drift out of place.
+        // Within a row, scrollY is settled, so the ring glides between stacked cards.
+        readonly property bool scrollSettled: (root.focusIdx < 6 && Math.abs(root.scrollY) < 0.01)
+            || (root.focusIdx >= 6 && Math.abs(root.scrollY - root.row2Scroll) < 0.01)
         Behavior on x { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-        Behavior on y { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on y { enabled: root.lift > 0.6 && scrollSettled; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
         Behavior on width { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
         Behavior on height { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
     }

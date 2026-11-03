@@ -31,6 +31,18 @@ Item {
     property int cardIdx: 0
     property string armed: ""        // name of the destructive power card waiting for a second Enter
 
+    // viii-cc-ring-restart: a panel ring that replays only when the item becomes selected
+    // (or when `key` changes while selected). A plain trigger on `cur ? 1 : 0` also
+    // replayed on the item that just lost selection while it faded out, which flashed.
+    component SelRing: GlassRing {
+        property bool sel: false
+        property int key: 0
+        property int plays: 0
+        onSelChanged: if (sel) plays++
+        onKeyChanged: if (sel) plays++
+        trigger: plays
+    }
+
     // ---- geometry (taken from the PS5 screenshot, scaled to 1366x768) ----
     readonly property real bigW: 314
     readonly property real bigH: 375
@@ -426,7 +438,7 @@ Item {
                         height: 62
 
                         Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 14; color: Qt.rgba(1, 1, 1, 0.07); opacity: nr.selT }
-                        GlassRing { anchors.fill: parent; anchors.margins: -1; radius: 17; opacity: nr.selT; visible: opacity > 0.01 }
+                        SelRing { anchors.fill: parent; anchors.margins: -1; radius: 17; sel: nr.cur; opacity: nr.selT; visible: opacity > 0.01 }
 
                         Rectangle {
                             id: nDisc
@@ -548,7 +560,7 @@ Item {
                     height: 52
 
                     Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 14; color: Qt.rgba(1, 1, 1, 0.07); opacity: hr.selT }
-                    GlassRing { anchors.fill: parent; anchors.margins: -1; radius: 17; opacity: hr.selT; visible: opacity > 0.01 }
+                    SelRing { anchors.fill: parent; anchors.margins: -1; radius: 17; sel: hr.cur; opacity: hr.selT; visible: opacity > 0.01 }
                     Txt {
                         x: 20
                         anchors.verticalCenter: parent.verticalCenter
@@ -656,10 +668,11 @@ Item {
                         textFormat: Text.PlainText
                     }
 
-                    GlassRing {
+                    SelRing {
                         anchors.fill: parent
                         anchors.margins: -4.5
                         radius: 22
+                        sel: cn.cur
                         opacity: cn.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                     }
@@ -813,10 +826,11 @@ Item {
                         color: Theme.fgDim
                     }
 
-                    GlassRing {
+                    SelRing {
                         anchors.fill: parent
                         anchors.margins: -4.5
                         radius: 22
+                        sel: wc.cur
                         opacity: wc.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                     }
@@ -1001,10 +1015,11 @@ Item {
                         color: Theme.fgDim
                     }
 
-                    GlassRing {
+                    SelRing {
                         anchors.fill: parent
                         anchors.margins: -4.5
                         radius: 22
+                        sel: wk.cur
                         opacity: wk.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                     }
@@ -1086,10 +1101,11 @@ Item {
                         font.pixelSize: 13
                         color: Theme.fgDim
                     }
-                    GlassRing {
+                    SelRing {
                         anchors.fill: parent
                         anchors.margins: -4.5
                         radius: 22
+                        sel: pc.cur
                         opacity: pc.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                     }
@@ -1598,13 +1614,15 @@ Item {
                     }
 
                     // one ring that glides between the parts of the focused card
-                    GlassRing {
+                    SelRing {
                         readonly property bool whole: root.mpPart === 0
                         x: whole ? 8 : mc.width * mc.cxs[Math.max(0, root.mpPart - 1)] - 23
                         y: whole ? 40 : 323
                         width: whole ? mc.width - 16 : 46
                         height: whole ? 244 : 46
                         radius: whole ? 12 : 23
+                        sel: mc.cur
+                        key: root.mpPart
                         opacity: mc.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                         Behavior on x { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
@@ -1685,7 +1703,7 @@ Item {
                         height: 62
 
                         Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 14; color: Qt.rgba(1, 1, 1, 0.07); opacity: vr.selT }
-                        GlassRing { anchors.fill: parent; anchors.margins: -1; radius: 17; opacity: vr.selT; visible: opacity > 0.01 }
+                        SelRing { anchors.fill: parent; anchors.margins: -1; radius: 17; sel: vr.cur; opacity: vr.selT; visible: opacity > 0.01 }
 
                         Rectangle {
                             x: 14
@@ -1859,10 +1877,11 @@ Item {
                     color: Theme.fgDim
                 }
 
-                GlassRing {
+                SelRing {
                     anchors.fill: parent
                     anchors.margins: -4.5
                     radius: 22
+                    sel: mk.cur
                     opacity: mk.cur ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
                 }
@@ -2029,10 +2048,11 @@ Item {
                         }
                     }
 
-                    GlassRing {
+                    SelRing {
                         anchors.fill: parent
                         anchors.margins: -4.5
                         radius: 22
+                        sel: bc.cur
                         opacity: bc.cur ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 200 } }
                     }
@@ -2068,12 +2088,21 @@ Item {
             x: root.width / 2 + (index - 4.5) * root.stepX - width / 2
             y: root.stripY - height / 2 + (1 - root.vis) * 40
             opacity: root.vis
-            scale: cur ? 1.22 : 1
-            Behavior on scale {
-                NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+
+            // viii-cc-strip-ring: the active icon sits in a plain white circle; the icon itself never zooms
+            Rectangle {
+                anchors.centerIn: parent
+                width: 48
+                height: 48
+                radius: 24
+                color: "transparent"
+                border.width: 2
+                border.color: Theme.fg
+                opacity: it.cur ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             }
 
-            // viii-cc-strip-plain: no tile and no ring on the selected icon, it is only brighter and a bit larger
+            // viii-cc-strip-plain: no tile on the selected icon, it is only brighter and circled
             Image {
                 visible: it.index === 1 && root.appIcon !== ""
                 anchors.centerIn: parent

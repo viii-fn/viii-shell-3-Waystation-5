@@ -279,7 +279,8 @@ PanelWindow {
         searchFocus = false;
         if (query !== "") query = "";
         else if (searchOpen) searchOpen = false;
-        else if (page === 0 && (home.inCards || home.inContent)) home.up();
+        else if (page === 0 && home.inContent) home.up(true);
+        else if (page === 0 && home.inCards) home.up();
         else if (tabsFocus) tabsFocus = false;
         else if (page === 1) page = 0;
         else Desk.summoned = false;
