@@ -1,4 +1,4 @@
-// viii-ring-v5
+// viii-ring-v7
 import QtQuick
 import QtQuick.Shapes
 
@@ -20,12 +20,12 @@ Item {
     readonly property int ringRevealMs: 700      // ring wipes in left -> right
     readonly property int ringOutMs: 220            // ring fades out right before the next repeat
     readonly property real ringSoft: 0.35           // softness of the wipe edge (0..1 of the width)
-    readonly property int shadeUpMs: 200        // shade 0 -> peak
-    readonly property int shadeHoldMs: 1      // shade stays at its peak
+    readonly property int shadeUpMs: 10        // shade 0 -> peak
+    readonly property int shadeHoldMs: 4      // shade stays at its peak
     readonly property int shadeDownMs: 1300     // shade peak -> 0 (the diagonal sweep lasts up+hold+down)
     readonly property int shadeRepeatMs: 5500   // pause before ring + shade play again (0 = only on selection)
     readonly property real shadePeak: 1.0       // overall strength of the shade (1 = as designed)
-    readonly property real shadeSoft: 0.45          // half-width of the diagonal band (bigger = wider, softer)
+    readonly property real shadeSoft: 0.8          // half-width of the diagonal band (bigger = wider, softer)
 
     property real reveal: 1             // ring wipe front, -ringSoft .. 1
     property real ringOpacity: 1
@@ -40,6 +40,9 @@ Item {
     readonly property real wLo: Math.max(0, Math.min(1, wave - shadeSoft))
     readonly property real wMid: Math.max(0, Math.min(1, wave))
     readonly property real wHi: Math.max(0, Math.min(1, wave + shadeSoft))
+    // brightness of the diagonal band at position t (0..1) when its centre is at w and its half-width is sw;
+    // every gradient stop asks this, so a band that is half outside the tile ramps in/out instead of popping
+    function bandAlpha(t, w, sw) { return 0.58 * Math.max(0, 1 - Math.abs(t - w) / sw); }
 
     function play() {
         if (!animated) return;
@@ -65,7 +68,7 @@ Item {
         loops: root.shadeRepeatMs > 0 ? Animation.Infinite : 1
         ParallelAnimation {
             NumberAnimation { target: root; property: "reveal"; from: -root.ringSoft; to: 1; duration: root.ringRevealMs; easing.type: Easing.InOutSine }
-            NumberAnimation { target: root; property: "wave"; from: -root.shadeSoft; to: 1 + root.shadeSoft; duration: Math.max(1, root.shadeUpMs + root.shadeHoldMs + root.shadeDownMs); easing.type: Easing.InOutSine }
+            NumberAnimation { target: root; property: "wave"; from: -root.shadeSoft; to: 1 + root.shadeSoft; duration: Math.max(1, root.shadeUpMs + root.shadeHoldMs + root.shadeDownMs); easing.type: Easing.Linear }
             SequentialAnimation {
                 NumberAnimation { target: root; property: "pulse"; to: 1; duration: root.shadeUpMs; easing.type: Easing.OutCubic }
                 PauseAnimation { duration: root.shadeHoldMs }
@@ -89,10 +92,10 @@ Item {
             strokeWidth: -1
             fillRule: ShapePath.OddEvenFill
             fillGradient: LinearGradient {
-                x1: 0; y1: 0
-                x2: ringShape.width; y2: 0
-                GradientStop { position: 0.0;      color: Qt.rgba(1, 1, 1, 0.98) }
-                GradientStop { position: root.rA;  color: Qt.rgba(1, 1, 1, 0.98 - 0.38 * root.rA) }
+                x1: ringShape.width; y1: 0
+                x2: 0; y2: 0
+                GradientStop { position: 0.0;      color: Qt.rgba(1, 1, 1, 0.60) }
+                GradientStop { position: root.rA;  color: Qt.rgba(1, 1, 1, 0.60 + 0.38 * root.rA) }
                 GradientStop { position: root.rB;  color: Qt.rgba(1, 1, 1, 0) }
                 GradientStop { position: 1.0;      color: Qt.rgba(1, 1, 1, 0) }
             }
@@ -133,11 +136,11 @@ Item {
             fillGradient: LinearGradient {
                 x1: 0; y1: 0
                 x2: shadeShape.width; y2: shadeShape.height
-                GradientStop { position: 0.0;       color: Qt.rgba(1, 1, 1, 0) }
-                GradientStop { position: root.wLo;  color: Qt.rgba(1, 1, 1, 0) }
-                GradientStop { position: root.wMid; color: Qt.rgba(1, 1, 1, 0.34) }
-                GradientStop { position: root.wHi;  color: Qt.rgba(1, 1, 1, 0) }
-                GradientStop { position: 1.0;       color: Qt.rgba(1, 1, 1, 0) }
+                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, root.bandAlpha(0.0, root.wave, root.shadeSoft)) }
+                GradientStop { position: root.wLo; color: Qt.rgba(1, 1, 1, root.bandAlpha(root.wLo, root.wave, root.shadeSoft)) }
+                GradientStop { position: root.wMid; color: Qt.rgba(1, 1, 1, root.bandAlpha(root.wMid, root.wave, root.shadeSoft)) }
+                GradientStop { position: root.wHi; color: Qt.rgba(1, 1, 1, root.bandAlpha(root.wHi, root.wave, root.shadeSoft)) }
+                GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, root.bandAlpha(1.0, root.wave, root.shadeSoft)) }
             }
             startX: root.th + root.innerR; startY: root.th
             PathLine { x: shadeShape.width - root.th - root.innerR; y: root.th }
