@@ -36,6 +36,9 @@ PanelWindow {
     property bool tabsFocus: false
     property bool gearFocus: false       // top-bar Settings gear has keyboard focus
     property bool launching: false
+    // viii-launch: 0..1, the hub UI fades away while an app is launching
+    property real launchT: launching ? 1 : 0
+    Behavior on launchT { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
     property real intro: 0
     property real pageT: page
     Behavior on pageT {
@@ -354,7 +357,7 @@ PanelWindow {
                 searchFocus: win.searchFocus
                 searchOpen: win.searchOpen
                 query: win.query
-                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal)
+                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal) * (1 - win.launchT)
                 visible: opacity > 0.01
                 onTabClicked: index => { win.page = index; win.tabsFocus = false; }
                 onSettingsClicked: win.openSettings()
@@ -369,7 +372,7 @@ PanelWindow {
                 intro: win.intro
                 shown: win.shown
                 focused: win.ringFocus
-                opacity: (1 - win.pageT) * (1 - settings.reveal)
+                opacity: (1 - win.pageT) * (1 - settings.reveal) * (1 - win.launchT)
                 y: win.vOff - 26 * win.pageT - 18 * settings.reveal
                 scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
@@ -383,7 +386,7 @@ PanelWindow {
                 focused: win.ringFocus
                 width: parent.width
                 height: parent.height
-                opacity: win.pageT * (1 - settings.reveal)
+                opacity: win.pageT * (1 - settings.reveal) * (1 - win.launchT)
                 y: 26 * (1 - win.pageT) - 18 * settings.reveal
                 scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
