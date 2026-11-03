@@ -197,6 +197,8 @@ PanelWindow {
     property bool historyOpen: false
     property bool bellFocus: false
     property bool settingsOpen: false
+    // viii-ring-v3: true while keyboard focus is on the page content (tiles), not on the top bar or a full-screen page
+    readonly property bool ringFocus: !tabsFocus && !gearFocus && !bellFocus && !searchFocus && !storeOpen && !historyOpen && !settingsOpen
     property bool searchFocus: false     // top-bar search button has keyboard focus
     property bool searchOpen: false      // the search field is open (Library page)
     property string query: ""
@@ -366,6 +368,7 @@ PanelWindow {
                 height: parent.height
                 intro: win.intro
                 shown: win.shown
+                focused: win.ringFocus
                 opacity: (1 - win.pageT) * (1 - settings.reveal)
                 y: win.vOff - 26 * win.pageT - 18 * settings.reveal
                 scale: 1 - 0.025 * settings.reveal
@@ -377,6 +380,7 @@ PanelWindow {
             LibraryPage {
                 id: lib
                 query: win.query
+                focused: win.ringFocus
                 width: parent.width
                 height: parent.height
                 opacity: win.pageT * (1 - settings.reveal)

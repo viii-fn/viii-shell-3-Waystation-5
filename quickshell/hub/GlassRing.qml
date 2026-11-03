@@ -1,4 +1,4 @@
-// viii-ring-v2
+// viii-ring-v4
 import QtQuick
 import QtQuick.Shapes
 
@@ -6,23 +6,27 @@ import QtQuick.Shapes
 //  * a thin band whose gradient runs left -> right (bright at the left, fading to the right)
 //  * every time the ring is shown or `trigger` changes, a bright band sweeps left -> right across the border
 //    while its strength fades up and then fully down, after which the ring stays static
-//  * `shade: true` adds a faint inner shade that fades up and down every ~5.5 s
+//  * `shade` (on by default): a soft gradient lies ON TOP of whatever the ring surrounds. It fades up, holds,
+//    fades down on every new selection, then repeats every shadeRepeatMs while the item stays selected.
 // A band is a big rounded rectangle with a smaller one cut out (odd-even fill), because a path stroke cannot
 // carry a gradient. Only opacity / position numbers animate (no offscreen buffers).
 Item {
     id: root
     property real radius: 16            // outer radius
     property real thickness: 2.5
-    property bool shade: false          // inner shade that pulses on a slow timer
-    property int trigger: 0             // change it to replay the intro sweep
+    property bool shade: true           // gradient shade over the content
+    property int trigger: 0             // change it to replay the intro
     property bool animated: true
 
     // ---- tuning (design values, change here) ----
     readonly property int sweepMs: 1400         // band travels left -> right
     readonly property int fadeUpMs: 600         // band strength 0 -> 1
     readonly property int fadeDownMs: 800       // band strength 1 -> 0
-    readonly property int shadePauseMs: 5500    // time between shade pulses
-    readonly property real shadePeak: 0.10      // shade strength at the top of a pulse
+    readonly property int shadeUpMs: 200        // shade 0 -> peak
+    readonly property int shadeHoldMs: 1      // shade stays at its peak
+    readonly property int shadeDownMs: 1300     // shade peak -> 0
+    readonly property int shadeRepeatMs: 5500   // pause before the shade plays again (0 = only on selection)
+    readonly property real shadePeak: 1.0       // overall strength of the shade (1 = as designed)
 
     property real amp: 0                // 0..1 strength of the sweeping band
     property real pos: -0.3             // -0.3..1.3 position of the band along the width
@@ -34,37 +38,34 @@ Item {
 
     function play() {
         if (!animated) return;
-        intro.restart();
+        cycle.restart();
     }
-    onVisibleChanged: if (visible) play()
-    onTriggerChanged: play()
+    function halt() {
+        cycle.stop();
+        amp = 0;
+        pulse = 0;
+    }
+    onVisibleChanged: { if (visible) play(); else halt(); }
+    onTriggerChanged: { if (visible) play(); }
     Component.onCompleted: if (visible) play()
 
-    ParallelAnimation {
-        id: intro
-        NumberAnimation { target: root; property: "pos"; from: -0.3; to: 1.3; duration: root.sweepMs; easing.type: Easing.InOutSine }
-        SequentialAnimation {
-            NumberAnimation { target: root; property: "amp"; from: 0; to: 1; duration: root.fadeUpMs; easing.type: Easing.OutCubic }
-            NumberAnimation { target: root; property: "amp"; to: 0; duration: root.fadeDownMs; easing.type: Easing.InOutCubic }
-        }
-    }
-
+    // one cycle drives the ring sweep AND the shade: they start together and repeat on the same interval
     SequentialAnimation {
-        running: root.shade && root.visible && root.animated
-        loops: Animation.Infinite
-        PauseAnimation { duration: root.shadePauseMs }
-        NumberAnimation { target: root; property: "pulse"; from: 0; to: 1; duration: 700; easing.type: Easing.InOutSine }
-        NumberAnimation { target: root; property: "pulse"; to: 0; duration: 900; easing.type: Easing.InOutSine }
-    }
-
-    // inner shade (inside the band)
-    Rectangle {
-        visible: root.shade && opacity > 0.005
-        anchors.fill: parent
-        anchors.margins: root.th
-        radius: root.innerR
-        color: "white"
-        opacity: root.shadePeak * root.pulse
+        id: cycle
+        loops: root.shadeRepeatMs > 0 ? Animation.Infinite : 1
+        ParallelAnimation {
+            NumberAnimation { target: root; property: "pos"; from: -0.3; to: 1.3; duration: root.sweepMs; easing.type: Easing.InOutSine }
+            SequentialAnimation {
+                NumberAnimation { target: root; property: "amp"; from: 0; to: 1; duration: root.fadeUpMs; easing.type: Easing.OutCubic }
+                NumberAnimation { target: root; property: "amp"; to: 0; duration: root.fadeDownMs; easing.type: Easing.InOutCubic }
+            }
+            SequentialAnimation {
+                NumberAnimation { target: root; property: "pulse"; to: 1; duration: root.shadeUpMs; easing.type: Easing.OutCubic }
+                PauseAnimation { duration: root.shadeHoldMs }
+                NumberAnimation { target: root; property: "pulse"; to: 0; duration: root.shadeDownMs; easing.type: Easing.InOutSine }
+            }
+        }
+        PauseAnimation { duration: Math.max(1, root.shadeRepeatMs) }
     }
 
     // one rounded band; `sweep` false = the static gradient, true = the moving highlight on top of it
@@ -122,4 +123,33 @@ Item {
 
     RingBand { sweep: false; outerR: root.outerR; th: root.th; innerR: root.innerR }
     RingBand { sweep: true; outerR: root.outerR; th: root.th; innerR: root.innerR; amp: root.amp; pos: root.pos }
+    // the gradient shade: a rounded fill inside the band, bright at the left fading to the right.
+    // A plain child shape on purpose: no inline component and no custom properties on the Shape itself.
+    Shape {
+        id: shadeShape
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+        opacity: root.pulse * root.shadePeak
+        visible: root.shade && opacity > 0.005
+
+        ShapePath {
+            strokeWidth: -1
+            fillGradient: LinearGradient {
+                x1: 0; y1: 0
+                x2: shadeShape.width; y2: 0
+                GradientStop { position: 0.0;  color: Qt.rgba(1, 1, 1, 0.34) }
+                GradientStop { position: 0.55; color: Qt.rgba(1, 1, 1, 0.14) }
+                GradientStop { position: 1.0;  color: Qt.rgba(1, 1, 1, 0.04) }
+            }
+            startX: root.th + root.innerR; startY: root.th
+            PathLine { x: shadeShape.width - root.th - root.innerR; y: root.th }
+            PathArc { x: shadeShape.width - root.th; y: root.th + root.innerR; radiusX: root.innerR; radiusY: root.innerR; direction: PathArc.Clockwise }
+            PathLine { x: shadeShape.width - root.th; y: shadeShape.height - root.th - root.innerR }
+            PathArc { x: shadeShape.width - root.th - root.innerR; y: shadeShape.height - root.th; radiusX: root.innerR; radiusY: root.innerR; direction: PathArc.Clockwise }
+            PathLine { x: root.th + root.innerR; y: shadeShape.height - root.th }
+            PathArc { x: root.th; y: shadeShape.height - root.th - root.innerR; radiusX: root.innerR; radiusY: root.innerR; direction: PathArc.Clockwise }
+            PathLine { x: root.th; y: root.th + root.innerR }
+            PathArc { x: root.th + root.innerR; y: root.th; radiusX: root.innerR; radiusY: root.innerR; direction: PathArc.Clockwise }
+        }
+    }
 }

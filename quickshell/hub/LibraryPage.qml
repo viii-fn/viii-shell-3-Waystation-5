@@ -8,6 +8,7 @@ Item {
     property var entries: []
     property int current: 0
     property string query: ""
+    property bool focused: true          // viii-ring-v3: keyboard focus is on the grid (not the top bar)
 
     signal launched(var entry, real x, real y, real w, real h)
 
@@ -93,6 +94,39 @@ Item {
         color: Theme.fgDim
     }
 
+    // viii-ring-v3: one ring that glides to the focused tile (the same ring as the home row)
+    Item {
+        id: ringHost
+        x: grid.x; y: grid.y
+        width: grid.width; height: grid.height
+        clip: true
+        z: 5
+        readonly property int col: root.cur ? root.current % root.cols : 0
+        readonly property int row: root.cur ? Math.floor(root.current / root.cols) : 0
+        readonly property real tgtX: col * root.cellW + (root.cellW - root.tileSize) / 2
+        readonly property real tgtY: row * root.cellH + 16
+        property real rx: tgtX
+        property real ry: tgtY
+        property real focT: (root.focused && root.cur) ? 1 : 0
+        Behavior on rx { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on ry { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on focT { NumberAnimation { duration: 180 } }
+
+        GlassRing {
+            readonly property real sz: root.tileSize * 1.1
+            readonly property real out: 3.5
+            x: ringHost.rx - (sz - root.tileSize) / 2 - out
+            y: ringHost.ry - grid.contentY - (sz - root.tileSize) / 2 - out
+            width: sz + 2 * out
+            height: width
+            radius: root.tileSize * 0.14 * 1.1 + out
+            thickness: 2.5
+            trigger: root.current
+            opacity: ringHost.focT
+            visible: opacity > 0.01
+        }
+    }
+
     GridView {
         id: grid
         x: 48
@@ -128,18 +162,7 @@ Item {
                 scale: cell.isCur ? 1.1 : 1.0
                 Behavior on scale { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
             }
-            Rectangle {
-                x: tile.x - 7; y: tile.y - 7
-                width: tile.width + 14; height: tile.height + 14
-                radius: tile.corner + 7
-                color: "transparent"
-                border.width: 3
-                border.color: Theme.fg
-                opacity: cell.isCur ? 1 : 0
-                scale: tile.scale
-                Behavior on opacity { NumberAnimation { duration: 160 } }
-                Behavior on scale { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-            }
+            // (the selection ring is the single gliding GlassRing above the grid, viii-ring-v3)
             Txt {
                 x: 8; y: 154
                 width: cell.width - 16

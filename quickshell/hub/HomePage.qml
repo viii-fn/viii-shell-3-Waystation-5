@@ -19,6 +19,7 @@ Item {
     property bool animateF: true
     property real infoIn: 1
     property bool shown: true            // the hub is on screen (the strip only keeps thumbnails loaded then)
+    property bool focused: true          // viii-ring-v3: keyboard focus is on the tiles (not the top bar)
     signal launched(var entry, real x, real y, real w, real h)
 
     // geometry in design pixels, measured from the real PS5 home screen scaled to 1366 wide
@@ -229,6 +230,9 @@ Item {
         readonly property real tw: root.wOf(i0) * (1 - fr) + root.wOf(i1) * fr
         readonly property real tx: root.xOf(i0) * (1 - fr) + root.xOf(i1) * fr
         readonly property real st: root.stage(i0) * (1 - fr) + root.stage(i1) * fr
+        // viii-ring-v3: the ring is only there while a tile has focus (not top bar, not the Explore cards)
+        property real focT: (root.focused && !root.inCards) ? 1 : 0
+        Behavior on focT { NumberAnimation { duration: 180 } }
 
         x: tx + (1 - st) * 454 - out
         y: root.rowTop + (1 - root.zoom) * 4 + (1 - st) * 26 - out
@@ -239,7 +243,7 @@ Item {
         shade: true
         z: 3
         trigger: root.current
-        opacity: st * root.zoom * Math.min(1, Math.max(0, (tx + tw) / 40))
+        opacity: st * root.zoom * focT * Math.min(1, Math.max(0, (tx + tw) / 40))
         visible: root.entries.length > 0 && opacity > 0.01 && x < root.width + 10
     }
 
