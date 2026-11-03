@@ -24,7 +24,7 @@ Item {
 
     // geometry in design pixels, measured from the real PS5 home screen scaled to 1366 wide
     readonly property real small: 80
-    readonly property real sel: 135
+    readonly property real sel: 130
     readonly property real gap: 4
     readonly property real padL: 128
     readonly property real rowTop: 108
