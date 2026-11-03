@@ -23,7 +23,7 @@ Item {
     readonly property int shadeUpMs: 10        // shade 0 -> peak
     readonly property int shadeHoldMs: 4      // shade stays at its peak
     readonly property int shadeDownMs: 1300     // shade peak -> 0 (the diagonal sweep lasts up+hold+down)
-    readonly property int shadeRepeatMs: 5500   // pause before ring + shade play again (0 = only on selection)
+    readonly property int shadeRepeatMs: 4300   // pause before ring + shade play again (0 = only on selection)
     readonly property real shadePeak: 1.0       // overall strength of the shade (1 = as designed)
     readonly property real shadeSoft: 0.8          // half-width of the diagonal band (bigger = wider, softer)
 
