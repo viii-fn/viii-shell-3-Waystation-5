@@ -20,8 +20,8 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "viii-shot"
-    WlrLayershell.keyboardFocus: win.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-    visible: open || flashing
+    WlrLayershell.keyboardFocus: (win.open || win.counting) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    visible: open || flashing || counting
 
     readonly property var fm: Hyprland.focusedMonitor
     readonly property bool isFocusedMon: fm ? fm.name === screen.name : true
@@ -51,6 +51,17 @@ PanelWindow {
     property real pop: 0                   // springy pop of the pane
     property bool flashing: false          // capture flash / leave fade is running
     property real flashA: 0
+    // ---- recorder (viii-shot3)
+    property string kind: "shot"           // shot | rec  (the two tabs of the panel)
+    property int sound: 1                  // 0 off, 1 system audio, 2 system audio + microphone
+    property bool counting: false          // the 3-2-1 countdown before a recording
+    property int countN: 3
+    property real cdX: 0
+    property real cdY: 0
+    property bool pendingRec: false
+    property var recArgs: null
+    property real monOffX: 0
+    property real monOffY: 0
     property rect flashRect: Qt.rect(0, 0, 0, 0)
     readonly property var spring: [0.34, 1.56, 0.64, 1, 1, 1]
 
@@ -118,13 +129,17 @@ PanelWindow {
 
     Connections {
         target: Desk
-        function onShotRequested() { if (win.isFocusedMon && !win.busy && !win.open && !win.flashing) win.begin(); }
+        function onShotRequested() {
+            if (Rec.active) { if (win.isFocusedMon) Rec.stop(); return; }     // Print again = stop recording
+            if (win.isFocusedMon && !win.busy && !win.open && !win.flashing && !win.counting) win.begin();
+        }
     }
 
     // ---- flow -------------------------------------------------------------------------------
     function begin() {
         busy = true;
         mode = "pane";
+        kind = "shot";
         choice = 0;
         dragging = false;
         rects = [];
@@ -163,6 +178,7 @@ PanelWindow {
         frozenUrl = "";
         mode = "pane";
         clearSel();
+        if (pendingRec) { pendingRec = false; startCountdown(); }
     }
     function fail(msg) {
         revealTimer.stop();
@@ -178,6 +194,7 @@ PanelWindow {
         cleanup();
     }
     function back() {
+        if (counting) { cancelCountdown(); return; }
         dragging = false;
         dragKind = "";
         guideX = -1; guideY = -1;
@@ -186,6 +203,12 @@ PanelWindow {
     }
     function pick(i) {
         choice = i;
+        if (kind === "rec") {
+            if (i === 0) { clearSel(); mode = "region"; if (!winProc.running) winProc.running = true; }
+            else if (i === 1) recordScreen();
+            else sound = (sound + 1) % 3;                  // the Sound tile just cycles off / system / system + mic
+            return;
+        }
         if (i === 0) { clearSel(); mode = "region"; if (!winProc.running) winProc.running = true; }
         else if (i === 1) { mode = "window"; if (!winProc.running) winProc.running = true; }
         else grab(0, 0, 0, 0);
@@ -215,6 +238,8 @@ PanelWindow {
         if (!j) return;
         const mon = (j.m || []).find(m => m.name === screen.name);
         if (!mon) return;
+        monOffX = mon.x;
+        monOffY = mon.y;
         const aw = mon.activeWorkspace ? mon.activeWorkspace.id : -1;
         const list = (j.c || []).filter(c => c.mapped && !c.hidden && c.monitor === mon.id && c.workspace && c.workspace.id === aw);
         list.sort((a, b) => ((b.floating ? 1 : 0) - (a.floating ? 1 : 0)) || (a.focusHistoryID - b.focusHistoryID));
@@ -298,8 +323,59 @@ PanelWindow {
         guideY = gy;
     }
 
-    function snap() { if (selW >= 4 && selH >= 4) grab(selX, selY, selW, selH); }
+    function snap() {
+        if (selW < 4 || selH < 4) return;
+        if (kind === "rec") recordRegion(selX, selY, selW, selH);
+        else grab(selX, selY, selW, selH);
+    }
 
+    // ---- recorder: the Record tab, the 3-2-1 countdown and the hand-over to viii-record ----
+    function setKind(k) { kind = k; choice = Math.min(choice, 2); }
+    function toggleKind() { setKind(kind === "shot" ? "rec" : "shot"); }
+    function recordScreen() {
+        recArgs = { target: screen.name, geom: "-", cx: width / 2, cy: height / 2 };
+        pendingRec = true;
+        leave(null);                       // the pane fades out; endFlash() then starts the countdown
+    }
+    function recordRegion(x, y, w, h) {
+        const iw = Math.max(frozen.implicitWidth, frozen.sourceSize.width);
+        const ih = Math.max(frozen.implicitHeight, frozen.sourceSize.height);
+        const rx = (iw > 0 && width > 0) ? iw / width : 1;
+        const ry = (ih > 0 && height > 0) ? ih / height : 1;
+        let pw = Math.max(2, Math.round(w * rx));
+        let ph = Math.max(2, Math.round(h * ry));
+        pw -= pw % 2;
+        ph -= ph % 2;
+        const px = Math.round(x * rx + monOffX);
+        const py = Math.round(y * ry + monOffY);
+        recArgs = { target: "region", geom: pw + "x" + ph + "+" + px + "+" + py, cx: x + w / 2, cy: y + h / 2 };
+        pendingRec = true;
+        leave(null);
+    }
+    function startCountdown() {
+        cleanup();                         // the frozen screenshot is not needed any more
+        countN = 3;
+        cdX = Math.max(100, Math.min(width - 100, recArgs ? recArgs.cx : width / 2));
+        cdY = Math.max(100, Math.min(height - 120, recArgs ? recArgs.cy : height / 2));
+        counting = true;
+        root.forceActiveFocus();
+    }
+    function tickCountdown() {
+        countN = countN - 1;
+        if (countN <= 0) { counting = false; startDelay.start(); }
+    }
+    function cancelCountdown() {
+        counting = false;
+        pendingRec = false;
+        recArgs = null;
+        startDelay.stop();
+    }
+    function beginRecording() {
+        if (!recArgs) return;
+        const snd = sound === 0 ? "off" : (sound === 1 ? "sys" : "both");
+        Rec.start(recArgs.target, recArgs.geom, snd);
+        recArgs = null;
+    }
     function nudge(dx, dy, big) {
         if (selW < 4) return;
         const st = big ? 10 : 1;
@@ -309,12 +385,13 @@ PanelWindow {
 
     function handleKey(e) {
         let ok = true;
+        if (counting) { if (e.key === Qt.Key_Escape) back(); e.accepted = true; return; }
         if (e.key === Qt.Key_Escape) back();
         else if (mode === "pane") {
             switch (e.key) {
             case Qt.Key_Left: choice = Math.max(0, choice - 1); break;
             case Qt.Key_Right: choice = Math.min(2, choice + 1); break;
-            case Qt.Key_Tab: choice = (choice + 1) % 3; break;
+            case Qt.Key_Tab: case Qt.Key_Backtab: case Qt.Key_Up: case Qt.Key_Down: toggleKind(); break;
             case Qt.Key_1: case Qt.Key_R: pick(0); break;
             case Qt.Key_2: case Qt.Key_W: pick(1); break;
             case Qt.Key_3: case Qt.Key_F: case Qt.Key_S: pick(2); break;
@@ -349,10 +426,11 @@ PanelWindow {
             ? selRect
             : Qt.rect(lastRect.x + lastRect.width / 2, lastRect.y + lastRect.height / 2, 0, 0))
 
-    // ---- scene (viii-shot2) ----------------------------------------------------------------
+    // ---- scene (viii-shot3) ----------------------------------------------------------------
     // Sony-style capture UI: the frozen screen dims, one glass panel offers Region / Window / Screen with
     // the same selection ring as the rest of the shell, and the ring also outlines the captured area.
     // No rulers. Only opacity / x / y / scale and colours are animated.
+    // The panel has two tabs: Screenshot and Record (Tab key / click to switch).
     FocusScope {
         id: root
         anchors.fill: parent
@@ -687,7 +765,7 @@ PanelWindow {
                         id: capRow
                         anchors.centerIn: parent
                         spacing: 10
-                        Txt { anchors.verticalCenter: parent.verticalCenter; text: "Capture"; font.pixelSize: 14; font.weight: Font.DemiBold; color: "#0b0d12" }
+                        Txt { anchors.verticalCenter: parent.verticalCenter; text: win.kind === "rec" ? "Record" : "Capture"; font.pixelSize: 14; font.weight: Font.DemiBold; color: "#0b0d12" }
                         Rectangle {
                             width: capKey.implicitWidth + 12; height: 18; radius: 5
                             anchors.verticalCenter: parent.verticalCenter
@@ -718,8 +796,20 @@ PanelWindow {
             readonly property real tileH: 118
             readonly property real gap: 14
             readonly property real tilesY: 62
-            readonly property var names: ["Region", "Window", "Screen"]
-            readonly property var descriptions: ["Select an area of the screen", "Capture a single window", "Capture the whole screen"]
+            readonly property var tiles: win.kind === "shot"
+                ? [ { n: "Region", i: "region" }, { n: "Window", i: "window" }, { n: "Screen", i: "screen" } ]
+                : [ { n: "Region", i: "region" }, { n: "Screen", i: "screen" }, { n: "Sound", i: "sound" } ]
+            readonly property string desc: win.kind === "shot"
+                ? ["Select an area of the screen", "Capture a single window", "Capture the whole screen"][win.choice]
+                : (win.choice === 2
+                    ? ["Video only, no sound", "Record the system audio", "Record system audio and microphone"][win.sound]
+                    : ["Record an area of the screen", "Record the whole screen"][win.choice])
+            readonly property var hints: [
+                { k: "\u2190  \u2192", t: "Move" },
+                { k: "Enter", t: win.kind === "rec" && win.choice === 2 ? "Change" : "Choose" },
+                { k: "Tab", t: win.kind === "shot" ? "Record" : "Screenshot" },
+                { k: "Esc", t: "Cancel" }
+            ]
 
             width: pad * 2 + tileW * 3 + gap * 2
             height: 238
@@ -741,11 +831,53 @@ PanelWindow {
             MouseArea { anchors.fill: parent }      // clicks on the panel itself do nothing (they used to dismiss it)
 
             // header
-            Txt {
-                x: bar.pad; y: 20
-                text: "Screenshot"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
+            Row {
+                id: tabs
+                x: bar.pad
+                y: 18
+                spacing: 24
+                Item {
+                    id: tabShot
+                    width: tabShotText.implicitWidth
+                    height: 26
+                    Txt {
+                        id: tabShotText
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Screenshot"
+                        font.pixelSize: 18
+                        font.weight: win.kind === "shot" ? Font.DemiBold : Font.Medium
+                        color: win.kind === "shot" ? Theme.fg : Theme.fgDim
+                        Behavior on color { ColorAnimation { duration: 180 } }
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.setKind("shot") }
+                }
+                Item {
+                    id: tabRec
+                    width: recDot.width + 8 + tabRecText.implicitWidth
+                    height: 26
+                    Rectangle { id: recDot; width: 9; height: 9; radius: 4.5; color: "#ff4d57"; anchors.verticalCenter: parent.verticalCenter }
+                    Txt {
+                        id: tabRecText
+                        x: recDot.width + 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Record"
+                        font.pixelSize: 18
+                        font.weight: win.kind === "rec" ? Font.DemiBold : Font.Medium
+                        color: win.kind === "rec" ? Theme.fg : Theme.fgDim
+                        Behavior on color { ColorAnimation { duration: 180 } }
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.setKind("rec") }
+                }
+            }
+            Rectangle {
+                y: 46
+                height: 2
+                radius: 1
+                color: Theme.fg
+                x: bar.pad + (win.kind === "shot" ? tabShot.x : tabRec.x)
+                width: win.kind === "shot" ? tabShot.width : tabRec.width
+                Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+                Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
             }
             Txt {
                 anchors.right: parent.right
@@ -753,17 +885,17 @@ PanelWindow {
                 y: 23
                 width: Math.min(implicitWidth, 270)
                 horizontalAlignment: Text.AlignRight
-                text: bar.descriptions[win.choice]
+                text: bar.desc
                 font.pixelSize: 13
                 color: Theme.fgDim
             }
 
             // the three options
             Repeater {
-                model: bar.names
+                model: bar.tiles
                 delegate: Item {
                     id: opt
-                    required property string modelData
+                    required property var modelData
                     required property int index
                     readonly property bool selected: win.choice === index
 
@@ -792,7 +924,7 @@ PanelWindow {
                         // Region: four rounded corner brackets and a centre dot
                         Item {
                             anchors.fill: parent
-                            visible: opt.index === 0
+                            visible: opt.modelData.i === "region"
                             Shape {
                                 anchors.fill: parent
                                 preferredRendererType: Shape.CurveRenderer
@@ -835,7 +967,7 @@ PanelWindow {
                         // Window: a rounded window with a title bar and three dots
                         Item {
                             anchors.fill: parent
-                            visible: opt.index === 1
+                            visible: opt.modelData.i === "window"
                             Shape {
                                 anchors.fill: parent
                                 preferredRendererType: Shape.CurveRenderer
@@ -867,7 +999,7 @@ PanelWindow {
                         // Screen: a monitor on a stand
                         Item {
                             anchors.fill: parent
-                            visible: opt.index === 2
+                            visible: opt.modelData.i === "screen"
                             Shape {
                                 anchors.fill: parent
                                 preferredRendererType: Shape.CurveRenderer
@@ -898,13 +1030,62 @@ PanelWindow {
                                 }
                             }
                         }
+
+                        // Sound: a speaker. No wave = off, one wave = system audio, two = system + microphone
+                        Item {
+                            anchors.fill: parent
+                            visible: opt.modelData.i === "sound"
+                            Shape {
+                                anchors.fill: parent
+                                preferredRendererType: Shape.CurveRenderer
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 5; startY: 14
+                                    PathLine { x: 12; y: 14 }
+                                    PathLine { x: 22; y: 6 }
+                                    PathLine { x: 22; y: 32 }
+                                    PathLine { x: 12; y: 24 }
+                                    PathLine { x: 5; y: 24 }
+                                    PathLine { x: 5; y: 14 }
+                                }
+                                ShapePath {
+                                    strokeColor: win.sound >= 1 ? icon.ink : "transparent"; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    startX: 29; startY: 14
+                                    PathQuad { x: 29; y: 24; controlX: 34; controlY: 19 }
+                                }
+                                ShapePath {
+                                    strokeColor: win.sound >= 2 ? icon.ink : "transparent"; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    startX: 34; startY: 9
+                                    PathQuad { x: 34; y: 29; controlX: 45; controlY: 19 }
+                                }
+                                ShapePath {
+                                    strokeColor: win.sound === 0 ? icon.ink : "transparent"; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    startX: 30; startY: 12
+                                    PathLine { x: 42; y: 26 }
+                                }
+                            }
+                        }
                     }
 
                     Txt {
-                        x: 0; y: 80
+                        visible: opt.modelData.i === "sound"
+                        x: 0; y: 97
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
-                        text: opt.modelData
+                        text: ["Off", "System", "System + Mic"][win.sound]
+                        font.pixelSize: 12
+                        color: Theme.fgDim
+                    }
+
+                    Txt {
+                        x: 0; y: opt.modelData.i === "sound" ? 74 : 80
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        text: opt.modelData.n
                         font.pixelSize: 17
                         font.weight: opt.selected ? Font.DemiBold : Font.Medium
                         color: opt.selected ? Theme.fg : Theme.fgDim
@@ -943,7 +1124,7 @@ PanelWindow {
                 y: bar.height - bar.pad - 20
                 spacing: 20
                 Repeater {
-                    model: [ { k: "\u2190  \u2192", t: "Move" }, { k: "Enter", t: "Choose" }, { k: "Esc", t: "Cancel" } ]
+                    model: bar.hints
                     delegate: Row {
                         required property var modelData
                         spacing: 8
@@ -959,5 +1140,64 @@ PanelWindow {
                 }
             }
         }
+
+        // ---- recording countdown: shown over the live screen, gone before the recording starts ----
+        Item {
+            id: cd
+            visible: win.counting
+            x: win.cdX - width / 2
+            y: win.cdY - 80
+            width: 160
+            height: 200
+            Rectangle { x: 0; y: 0; width: 160; height: 160; radius: 80; color: Qt.alpha(Theme.deep, 0.80) }
+            GlassRing {
+                readonly property real out: 4
+                x: -out; y: -out
+                width: 160 + 2 * out
+                height: 160 + 2 * out
+                radius: 80 + out
+                thickness: 3
+                shade: false
+                animated: cd.visible
+            }
+            Txt {
+                id: cdNum
+                x: 0; y: 0
+                width: 160; height: 160
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: String(Math.max(1, win.countN))
+                font.pixelSize: 78
+                font.weight: Font.DemiBold
+                transformOrigin: Item.Center
+            }
+            Rectangle {
+                x: (parent.width - width) / 2
+                y: 170
+                width: cdHint.width + 28
+                height: 32
+                radius: 16
+                color: Qt.alpha(Theme.deep, 0.82)
+            }
+            Row {
+                id: cdHint
+                y: 176
+                x: (parent.width - width) / 2
+                spacing: 8
+                Rectangle {
+                    width: cdEsc.implicitWidth + 14; height: 20; radius: 6
+                    color: Qt.alpha(Theme.fg, 0.07)
+                    border.width: 1
+                    border.color: Qt.alpha(Theme.fg, 0.22)
+                    Txt { id: cdEsc; anchors.centerIn: parent; text: "Esc"; font.pixelSize: 11; color: Theme.fgDim }
+                }
+                Txt { anchors.verticalCenter: parent.verticalCenter; text: "Cancel"; font.pixelSize: 13; color: Theme.fgDim }
+            }
+        }
+        NumberAnimation { id: cdPop; target: cdNum; property: "scale"; from: 1.3; to: 1; duration: 380; easing.type: Easing.OutBack }
+        Connections { target: win; function onCountNChanged() { cdPop.restart(); } }
+        Timer { id: countTimer; interval: 1000; repeat: true; running: win.counting; onTriggered: win.tickCountdown() }
+        // the overlay is already gone when this fires, so it never ends up in the video
+        Timer { id: startDelay; interval: 450; onTriggered: win.beginRecording() }
     }
 }

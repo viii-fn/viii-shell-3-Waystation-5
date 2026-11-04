@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# viii-record · screen recorder helper for viii-shell-3 (uses gpu-screen-recorder)
+#   viii-record start <output-name|region> <WxH+X+Y|-> <off|sys|both>
+#   viii-record stop
+#   viii-record status        prints "recording <start-epoch>" or "idle"
+# Recording runs detached, so reloading or restarting the shell never kills it.
+# Videos go to ~/Videos/Recordings/recording-<date>-<time>.mp4
+set -u
+dir="$HOME/.cache/viii/rec"
+mkdir -p "$dir"
+pidf="$dir/pid"; stf="$dir/state"; outf="$dir/out"; log="$dir/gsr.log"
+vids="${XDG_VIDEOS_DIR:-$HOME/Videos}/Recordings"
+
+alive() { [[ -s "$pidf" ]] && kill -0 "$(cat "$pidf")" 2>/dev/null; }
+note()  { command -v notify-send >/dev/null && notify-send -a Recording "$@" || true; }
+
+launch() { # launch <extra gsr args...>
+    # background jobs of a script start with SIGINT ignored; reset it so Ctrl+C-style stop works
+    nohup env --default-signal=INT gpu-screen-recorder "${base[@]}" "$@" >"$log" 2>&1 </dev/null &
+    echo $! >"$pidf"
+    local i
+    for i in $(seq 1 12); do          # give it 3 s to prove it stays alive
+        sleep 0.25
+        alive || return 1
+    done
+    return 0
+}
+
+case "${1:-status}" in
+status)
+    if alive; then echo "recording $(cat "$stf" 2>/dev/null || date +%s)"
+    else rm -f "$pidf" "$stf"; echo idle; fi
+    ;;
+start)
+    alive && exit 0
+    command -v gpu-screen-recorder >/dev/null || { note -u critical "Recording failed" "gpu-screen-recorder is not installed"; exit 1; }
+    target="${2:-screen}"; geom="${3:--}"; sound="${4:-sys}"
+    mkdir -p "$vids"
+    out="$vids/recording-$(date +%Y%m%d-%H%M%S).mp4"
+    echo "$out" >"$outf"
+    base=(-f 30 -c mp4 -k h264 -q high -o "$out")
+    if [[ "$target" == region ]]; then base+=(-w region -region "$geom"); else base+=(-w "$target"); fi
+    case "$sound" in
+        sys)  base+=(-a default_output) ;;
+        both) base+=(-a "default_output|default_input") ;;
+    esac
+    date +%s >"$stf"
+    if launch; then exit 0; fi
+    # the GPU encoder did not start: try the CPU encoder once (heavier, but it works anywhere)
+    note "Recording" "GPU encoding is not available, trying the CPU encoder"
+    rm -f "$out"
+    if launch -encoder cpu -q medium; then exit 0; fi
+    err="$(grep -v '^\s*$' "$log" | tail -n 2 | tr '\n' ' ')"
+    rm -f "$pidf" "$stf" "$out"
+    note -u critical "Recording failed" "${err:-gpu-screen-recorder exited, see $log}"
+    exit 1
+    ;;
+stop)
+    if ! alive; then rm -f "$pidf" "$stf"; exit 0; fi
+    pid="$(cat "$pidf")"
+    kill -INT "$pid" 2>/dev/null
+    for i in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+    kill -0 "$pid" 2>/dev/null && kill -TERM "$pid" 2>/dev/null
+    out="$(cat "$outf" 2>/dev/null || true)"
+    rm -f "$pidf" "$stf"
+    if [[ -n "$out" && -s "$out" ]]; then
+        note -i video-x-generic "Recording saved" "Videos/Recordings/$(basename "$out")"
+    else
+        note -u critical "Recording failed" "No video file was written, see $log"
+    fi
+    ;;
+*)
+    echo "usage: viii-record start <output|region> <geometry|-> <off|sys|both> | stop | status" >&2
+    exit 2
+    ;;
+esac

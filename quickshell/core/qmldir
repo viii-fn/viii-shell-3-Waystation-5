@@ -7,3 +7,4 @@ ThemeDriver 1.0 ThemeDriver.qml
 singleton Wall 1.0 Wall.qml
 singleton Notifs 1.0 Notifs.qml
 singleton News 1.0 News.qml
+singleton Rec 1.0 Rec.qml
