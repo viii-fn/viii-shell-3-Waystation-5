@@ -10,8 +10,12 @@ Item {
     property bool shown: true
     property bool wallpaper: false
     property bool news: false
+    property bool ghost: true
     property url newsImg: ""
     property real drift: 0
+    // darkness of the wallpaper dim layer; Settings raises this so its content stays legible
+    property real dim: 0.28
+    Behavior on dim { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
 
     Rectangle {
         anchors.fill: parent
@@ -78,8 +82,8 @@ Item {
             smooth: true
             asynchronous: true
         }
-        // light dim so tiles and text stay readable on bright wallpapers
-        Rectangle { anchors.fill: parent; color: Qt.alpha(Theme.deep, 0.28) }
+        // dim so tiles and text stay readable on bright wallpapers
+        Rectangle { anchors.fill: parent; color: Qt.alpha(Theme.deep, root.dim) }
     }
 
     // viii-explore: full-bleed picture of the selected news item (Explore tile). Unloaded when not shown (2 GB RAM).
@@ -111,19 +115,26 @@ Item {
     }
 
     // ghost of the selected app's icon
-    Image {
-        id: ghost
-        anchors.right: parent.right
-        anchors.rightMargin: -root.height * 0.10
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.verticalCenterOffset: -root.height * 0.04
-        width: root.height * 0.95
-        height: width
-        sourceSize: Qt.size(64, 64)
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-        asynchronous: true
-        opacity: 0
+    Item {
+        id: ghostLayer
+        anchors.fill: parent
+        opacity: root.ghost ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+
+        Image {
+            id: ghost
+            anchors.right: parent.right
+            anchors.rightMargin: -root.height * 0.10
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -root.height * 0.04
+            width: root.height * 0.95
+            height: width
+            sourceSize: Qt.size(64, 64)
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            asynchronous: true
+            opacity: 0
+        }
     }
     SequentialAnimation {
         id: swap

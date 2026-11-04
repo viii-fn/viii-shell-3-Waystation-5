@@ -5,15 +5,21 @@ import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
 import Quickshell.Networking
 import "../core"
+import "../hub"
 
-// Full-screen PS5-inspired settings surface. It deliberately leaves the existing wallpaper visible;
-// all colour comes from the active Matugen wallpaper palette through Theme.
+// PS5-inspired settings surface.
+//
+// Two layers share the same focus:
+//   * pane 0: every category as a centred glass tile in a 3 x 4 grid;
+//   * pane 1: the reusable SettingsMenu (30% item list / 70% control) for the chosen category.
+// The transition between them is a fade + zoom. The wallpaper is never covered by a scrim:
+// Hub.qml keeps Backdrop.wallpaper on while settings is open, so the current wallpaper is
+// always the background and all colour comes from the wallpaper's Matugen palette.
 //
 // Motion / performance rules used throughout this file:
 //  * only opacity, x/y, scale, rotation and colour are animated (no layout-driven size animation);
 //  * no layer.enabled, no shader effects, no blur: nothing here allocates an offscreen buffer;
 //  * one opacity at the root instead of several stacked multiplications;
-//  * a single full-screen scrim (one blend pass instead of two);
 //  * the row Repeater is keyed on a COUNT, so live Wi-Fi / Bluetooth updates change text in
 //    place instead of destroying and rebuilding every row (no flicker, no GC churn);
 //  * brightness / volume writes are coalesced so dragging never spawns a process per mouse event;
@@ -38,24 +44,18 @@ FocusScope {
     }
 
     // ---- navigation state ----
-    property int categoryIndex: 0        // highlighted in the rail (changes instantly)
-    property int shownCategory: 0        // what the right-hand panel currently displays (swaps mid-transition)
-    property int rowIndex: 0
-    property int pane: 0                 // 0 = categories, 1 = settings
-    property string armed: ""
+    property int categoryIndex: 0        // highlighted category in the grid
+    property int rowIndex: 0             // highlighted row inside the open category
+    property int pane: 0                 // 0 = category grid, 1 = category page
+    property string armed: ""            // destructive action waiting for a second Enter
 
-    // ---- motion state ----
-    property real contentT: 1            // right-hand panel fade
-    property real contentShift: 0        // right-hand panel vertical slide
-    property int switchDir: 1
-    property bool switching: false
-    property real nudge: 0               // edge-of-list bump
-    property real nudgeDir: 1
-    property real pulse: 0               // activation pulse on the focus highlight
-    property real promptT: passwordPrompt ? 1 : 0
-    property real promptPop: passwordPrompt ? 1 : 0
-    Behavior on promptT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-    Behavior on promptPop { NumberAnimation { duration: 280; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
+    // Fade + zoom between the grid and a category page. The Behavior is disabled while the
+    // whole settings surface is closing, so a reset never animates behind a fading page.
+    property real pageT: pane === 1 ? 1 : 0
+    Behavior on pageT {
+        enabled: root.active
+        NumberAnimation { duration: 420; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+    }
 
     // ---- slider state (coalesced writes) ----
     property string dragAction: ""
@@ -64,7 +64,18 @@ FocusScope {
     property int briTarget: -1
     property int briSent: -1
 
-    readonly property int rowPitch: 77
+    // ---- geometry (10% horizontal padding on each side) ----
+    readonly property real padX: Math.round(width * 0.10)
+    readonly property real innerW: width - 2 * padX
+    readonly property real gridGap: 20
+    readonly property real tileW: Math.floor((innerW - 2 * gridGap) / 3)
+    readonly property real tileH: 94
+    readonly property real gridGapY: 18
+    readonly property real gridX: padX + Math.round((innerW - (3 * tileW + 2 * gridGap)) / 2)
+    readonly property real gridH: 4 * tileH + 3 * gridGapY
+    readonly property real gridY: Math.round((height - gridH) / 2)
+    function tileX(i) { return gridX + (i % 3) * (tileW + gridGap); }
+    function tileY(i) { return gridY + Math.floor(i / 3) * (tileH + gridGapY); }
 
     readonly property var categories: [
         { title: "System", icon: "", description: "System software, power and device information" },
@@ -80,8 +91,6 @@ FocusScope {
         { title: "Applications", icon: "", description: "Installed applications and app library" },
         { title: "About", icon: "", description: "System and shell versions" }
     ]
-
-    readonly property var emptyRow: ({ title: "", desc: "", action: "", kind: "info" })
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
@@ -118,12 +127,16 @@ FocusScope {
     property string statusShown: ""          // last non-empty message, kept while the pill fades out
     property string statusKindShown: "info"
     property bool passwordPrompt: false
+    property real promptT: passwordPrompt ? 1 : 0
+    property real promptPop: passwordPrompt ? 1 : 0
+    Behavior on promptT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+    Behavior on promptPop { NumberAnimation { duration: 280; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
     property string wifiPassword: ""
     property var pendingNetwork: null
     property var pendingBluetooth: null
     property bool networkBusy: false
 
-    readonly property var currentCategory: categories[shownCategory]
+    readonly property var currentCategory: categories[Math.max(0, Math.min(categories.length - 1, categoryIndex))]
     readonly property var currentRows: rowsForCategory()
     onCurrentRowsChanged: rowIndex = Math.max(0, Math.min(rowIndex, currentRows.length - 1))
 
@@ -174,33 +187,6 @@ FocusScope {
     Timer { id: volFlush; interval: 40; onTriggered: root.commitVolume() }
     Timer { id: volIdle; interval: 600; onTriggered: { root.commitVolume(); root.volTarget = -1; } }
 
-    // ---- animations ----
-    // Category switch: old content slides/fades out, the data swaps while invisible, new content
-    // slides/fades in. Holding an arrow key keeps restarting the exit, so the heavy swap happens once.
-    SequentialAnimation {
-        id: contentTransition
-        ParallelAnimation {
-            NumberAnimation { target: root; property: "contentT"; to: 0; duration: 110; easing.type: Easing.InQuad }
-            NumberAnimation { target: root; property: "contentShift"; to: -root.switchDir * 14; duration: 110; easing.type: Easing.InQuad }
-        }
-        ScriptAction { script: { root.shownCategory = root.categoryIndex; root.contentShift = root.switchDir * 14; } }
-        ParallelAnimation {
-            NumberAnimation { target: root; property: "contentT"; to: 1; duration: 340; easing.type: Easing.OutCubic }
-            NumberAnimation { target: root; property: "contentShift"; to: 0; duration: 340; easing.type: Easing.OutCubic }
-        }
-        ScriptAction { script: root.switching = false }
-    }
-    SequentialAnimation {
-        id: pulseAnim
-        NumberAnimation { target: root; property: "pulse"; to: 1; duration: 70; easing.type: Easing.OutQuad }
-        NumberAnimation { target: root; property: "pulse"; to: 0; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 2 }
-    }
-    SequentialAnimation {
-        id: nudgeAnim
-        NumberAnimation { target: root; property: "nudge"; to: root.nudgeDir; duration: 70; easing.type: Easing.OutQuad }
-        NumberAnimation { target: root; property: "nudge"; to: 0; duration: 300; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
-    }
-
     component SettingsText: Text {
         color: Theme.fg
         font.family: Theme.fontFamily
@@ -210,7 +196,7 @@ FocusScope {
     }
 
     function rowsForCategory() {
-        switch (shownCategory) {
+        switch (categoryIndex) {
         case 0: return [
             { title: "Lock screen", desc: "Lock the current desktop session", action: "lock", kind: "action" },
             { title: "Suspend", desc: "Put the computer into sleep mode", action: "suspend", kind: "action" },
@@ -338,6 +324,12 @@ FocusScope {
         }
     }
 
+    function fractionFor(action) {
+        if (action === "volume") return volumeShown;
+        if (action === "brightness") return brightnessShown;
+        return 0;
+    }
+
     function setStatus(message, kind) {
         statusKind = kind || "info";
         statusShown = message;
@@ -405,28 +397,45 @@ FocusScope {
         wifiPassword = "";
     }
 
-    function selectCategory(index) {
+    function moveGrid(dx, dy) {
+        let col = categoryIndex % 3;
+        let row = Math.floor(categoryIndex / 3);
+        col = Math.max(0, Math.min(2, col + dx));
+        row = Math.max(0, Math.min(3, row + dy));
+        categoryIndex = row * 3 + col;
+        armed = "";
+    }
+
+    function openCategory(index) {
         const next = Math.max(0, Math.min(categories.length - 1, index));
-        if (next === categoryIndex) return;
-        switchDir = next > categoryIndex ? 1 : -1;
-        switching = true;                    // set first so the focus highlight does not glide through the swap
         categoryIndex = next;
         rowIndex = 0;
+        armed = "";
+        pane = 1;
+        if (wifiDevice) wifiDevice.scannerEnabled = next === 1;
+        if (adapter && next !== 4) adapter.discovering = false;
+        if (next === 1) refreshWifi();
+    }
+
+    function closeCategory() {
         pane = 0;
         armed = "";
-        contentTransition.restart();
-        if (wifiDevice) wifiDevice.scannerEnabled = active && categoryIndex === 1;
-        if (adapter && categoryIndex !== 4) adapter.discovering = false;
-        if (categoryIndex === 1 && wifiDevice) refreshWifi();
+        endSliderDrag();
+        if (wifiDevice) wifiDevice.scannerEnabled = false;
+        if (adapter) adapter.discovering = false;
     }
 
-    function bump(dir) {
-        nudgeDir = dir;
-        nudgeAnim.restart();
-    }
-
-    function bumpPulse() {
-        pulseAnim.restart();
+    function menuRowClicked(index) {
+        if (pane !== 1) return;
+        const row = currentRows[index];
+        if (!row) return;
+        if (index !== rowIndex) {
+            rowIndex = index;
+            armed = "";
+            return;
+        }
+        if (row.kind === "cycle") adjust(1);
+        else if (row.kind !== "slider" && row.kind !== "info") activate();
     }
 
     // ---- coalesced hardware writes ----
@@ -479,7 +488,7 @@ FocusScope {
     }
 
     function adjust(delta) {
-        if (switching) return;
+        if (pane !== 1) return;
         const row = currentRows[rowIndex];
         if (!row) return;
         if (row.action === "volume" && sink && sink.audio)
@@ -491,13 +500,11 @@ FocusScope {
             i = (i + delta + audioSinks.length) % audioSinks.length;
             Pipewire.preferredDefaultAudioSink = audioSinks[i];
             setStatus("Output: " + (audioSinks[i].description || audioSinks[i].name), "success");
-            bumpPulse();
         } else if (row.action === "audio-input" && audioSources.length > 0) {
             let i = audioSources.indexOf(source);
             i = (i + delta + audioSources.length) % audioSources.length;
             Pipewire.preferredDefaultAudioSource = audioSources[i];
             setStatus("Input: " + (audioSources[i].description || audioSources[i].name), "success");
-            bumpPulse();
         }
     }
 
@@ -518,11 +525,10 @@ FocusScope {
     }
 
     function activate() {
-        if (switching) return;
+        if (pane !== 1) return;
         const row = currentRows[rowIndex];
         if (!row) return;
         if (row.action !== "restart" && row.action !== "poweroff") armed = "";
-        if (row.kind !== "info" && row.kind !== "slider") bumpPulse();
         if (row.action.indexOf("wifi-network:") === 0) {
             const n = wifiNetworks[parseInt(row.action.split(":")[1])];
             connectNetwork(n);
@@ -603,61 +609,69 @@ FocusScope {
             event.accepted = false;
             return;
         }
+
+        const row = currentRows[rowIndex];
+        const adjustable = row && (row.kind === "slider" || row.kind === "cycle");
         let handled = true;
+
+        if (pane === 0) {
+            switch (event.key) {
+            case Qt.Key_Left: moveGrid(-1, 0); break;
+            case Qt.Key_Right: moveGrid(1, 0); break;
+            case Qt.Key_Up: moveGrid(0, -1); break;
+            case Qt.Key_Down: moveGrid(0, 1); break;
+            case Qt.Key_Return:
+            case Qt.Key_Enter:
+            case Qt.Key_Space:
+                openCategory(categoryIndex);
+                break;
+            case Qt.Key_Escape:
+            case Qt.Key_Back:
+                closeRequested();
+                break;
+            case Qt.Key_Home:
+                categoryIndex = 0;
+                break;
+            case Qt.Key_End:
+                categoryIndex = categories.length - 1;
+                break;
+            default:
+                handled = false;
+            }
+            event.accepted = handled;
+            return;
+        }
+
         switch (event.key) {
         case Qt.Key_Escape:
         case Qt.Key_Back:
-            if (pane === 1) pane = 0;
-            else closeRequested();
+            closeCategory();
             break;
         case Qt.Key_Left:
-            if (pane === 1 && currentRows[rowIndex]
-                && (currentRows[rowIndex].kind === "slider" || currentRows[rowIndex].kind === "cycle"))
-                adjust(-1);
-            else if (pane === 1) pane = 0;
+            if (adjustable) adjust(-1);
             break;
         case Qt.Key_Right:
-            if (pane === 0) pane = 1;
-            else if (currentRows[rowIndex]
-                && (currentRows[rowIndex].kind === "slider" || currentRows[rowIndex].kind === "cycle"))
-                adjust(1);
+            if (adjustable) adjust(1);
             break;
         case Qt.Key_Up:
-            if (pane === 0) {
-                if (categoryIndex === 0) bump(-1);
-                else selectCategory(categoryIndex - 1);
-            } else {
-                if (rowIndex === 0) bump(-1);
-                else rowIndex = rowIndex - 1;
-            }
+            if (rowIndex > 0) rowIndex = rowIndex - 1;
             clearConfirmHint();
             break;
         case Qt.Key_Down:
-            if (pane === 0) {
-                if (categoryIndex === categories.length - 1) bump(1);
-                else selectCategory(categoryIndex + 1);
-            } else {
-                if (rowIndex >= currentRows.length - 1) bump(1);
-                else rowIndex = rowIndex + 1;
-            }
+            if (rowIndex < currentRows.length - 1) rowIndex = rowIndex + 1;
             clearConfirmHint();
             break;
         case Qt.Key_Return:
         case Qt.Key_Enter:
         case Qt.Key_Space:
-            if (pane === 0) pane = 1;
+            if (row && row.kind === "cycle") adjust(1);
             else activate();
             break;
-        case Qt.Key_Tab:
-            pane = 1 - pane;
-            break;
         case Qt.Key_Home:
-            if (pane === 0) selectCategory(0);
-            else rowIndex = 0;
+            rowIndex = 0;
             break;
         case Qt.Key_End:
-            if (pane === 0) selectCategory(categories.length - 1);
-            else rowIndex = Math.max(0, currentRows.length - 1);
+            rowIndex = Math.max(0, currentRows.length - 1);
             break;
         case Qt.Key_Plus:
         case Qt.Key_Equal:
@@ -747,19 +761,15 @@ FocusScope {
         storageProc.running = true;
         kernelProc.running = true;
         Desk.briRefresh();
-        if (categoryIndex === 1) refreshWifi();
+        if (categoryIndex === 1 && pane === 1) refreshWifi();
     }
 
     onActiveChanged: {
         if (active) {
-            contentTransition.stop();
-            switching = false;
-            contentT = 1;
-            contentShift = 0;
-            shownCategory = categoryIndex;
             refreshDetails();
             forceActiveFocus();
         } else {
+            pane = 0;
             passwordPrompt = false;
             networkBusy = false;
             armed = "";
@@ -772,435 +782,165 @@ FocusScope {
         }
     }
     onCategoryIndexChanged: {
-        // Direct changes from the hub (reset to "System" on open) skip the transition.
-        if (!switching) shownCategory = categoryIndex;
-        if (wifiDevice) wifiDevice.scannerEnabled = active && categoryIndex === 1;
+        if (wifiDevice) wifiDevice.scannerEnabled = active && pane === 1 && categoryIndex === 1;
+        if (adapter && !(active && pane === 1 && categoryIndex === 4)) adapter.discovering = false;
     }
     Component.onCompleted: if (active) refreshDetails()
 
-    // The root only fades; the content layers below slide, so the dimmed backdrop never moves
-    // and never exposes an edge.
     opacity: reveal
     visible: active || reveal > 0.01
 
-    // The scrim now lives in Hub.qml (full-bleed behind this page), so it is switched off here.
-    Rectangle {
-        visible: false
-        anchors.fill: parent
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.84) }
-            GradientStop { position: 1.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.93) }
-        }
-    }
-
-    SettingsText {
-        x: 66 - (1 - root.reveal) * 24; y: 40
-        text: "Settings"
-        font.pixelSize: 38
-        font.weight: Font.Bold
-    }
-    SettingsText {
-        anchors.right: parent.right
-        anchors.rightMargin: 68 - (1 - root.reveal) * 24
-        y: 56
-        text: "SYSTEM CONFIGURATION"
-        font.pixelSize: 12
-        font.letterSpacing: 2
-        color: Theme.fgDim
-    }
-
-    // ---- left category rail ----
+    // =====================================================================
+    // pane 0 · the category grid
+    // =====================================================================
     Item {
-        id: rail
-        x: -(1 - root.reveal) * 34
+        id: gridLayer
+        anchors.fill: parent
+        enabled: root.pane === 0
+        visible: opacity > 0.01
+        opacity: 1 - root.pageT
+        scale: 1 + 0.045 * root.pageT
+        transformOrigin: Item.Center
 
-        Rectangle {
-            x: 58; y: 126
-            width: 326; height: 560
-            radius: 20
-            color: Theme.glass
-            border.width: 1
-            border.color: Theme.glassBorder
+        SettingsText {
+            x: root.padX; y: 34
+            text: "Settings"
+            font.pixelSize: 38
+            font.weight: Font.Bold
+        }
+        SettingsText {
+            anchors.right: parent.right
+            anchors.rightMargin: root.padX
+            y: 52
+            text: "Esc   Close"
+            font.pixelSize: 12
+            color: Theme.fgDim
+            horizontalAlignment: Text.AlignRight
         }
 
-        Rectangle {
-            id: railHi
-            x: 72
-            y: 140 + root.categoryIndex * 46
-            width: 298; height: 44
-            radius: 11
-            color: Theme.glassHi
-            opacity: root.pane === 0 ? 1 : 0.55
-            scale: 1 + 0.012 * root.pulse * (root.pane === 0 ? 1 : 0)
-            transform: Translate { y: root.pane === 0 ? root.nudge * 5 : 0 }
-            Behavior on y {
-                NumberAnimation { duration: 300; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-            }
-            Behavior on opacity { NumberAnimation { duration: 180 } }
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "transparent"
-                border.width: 1
-                border.color: Theme.glassBorder
-                opacity: root.pane === 0 ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-            }
-            Rectangle {
-                x: 5
-                anchors.verticalCenter: parent.verticalCenter
-                width: 3; height: 20
-                radius: 1.5
-                color: Theme.accent
-            }
-        }
+        Repeater {
+            model: root.categories
 
-        Column {
-            x: 72; y: 140
-            width: 298
-            spacing: 2
-            Repeater {
-                model: root.categories
-                delegate: Item {
-                    id: cat
-                    required property var modelData
-                    required property int index
-                    width: 298
-                    height: 44
-                    readonly property bool selected: root.categoryIndex === index
-                    readonly property real enter: Math.max(0, Math.min(1, root.reveal * 1.8 - index * 0.06))
-                    x: (1 - enter) * 16
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 11
-                        color: Theme.glass
-                        opacity: catArea.containsMouse && !cat.selected ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 140 } }
-                    }
-                    Text {
-                        x: 13; anchors.verticalCenter: parent.verticalCenter
-                        text: cat.modelData.icon
-                        font.family: Theme.iconFont
-                        font.pixelSize: 18
-                        color: cat.selected ? Theme.fg : Theme.fgDim
-                        scale: cat.selected ? 1.14 : 1
-                        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 2 } }
-                        Behavior on color { ColorAnimation { duration: 180 } }
-                    }
-                    SettingsText {
-                        x: 46; anchors.verticalCenter: parent.verticalCenter
-                        width: 236
-                        text: cat.modelData.title
-                        font.pixelSize: 16
-                        font.weight: cat.selected ? Font.DemiBold : Font.Medium
-                        color: cat.selected ? Theme.fg : Theme.fgDim
-                        Behavior on color { ColorAnimation { duration: 180 } }
-                    }
-                    MouseArea {
-                        id: catArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.selectCategory(cat.index)
-                    }
+            delegate: Item {
+                id: tile
+                required property var modelData
+                required property int index
+
+                readonly property bool selected: root.categoryIndex === index
+
+                x: root.tileX(index)
+                y: root.tileY(index)
+                width: root.tileW
+                height: root.tileH
+
+                Text {
+                    x: 28
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: tile.modelData.icon
+                    font.family: Theme.iconFont
+                    font.pixelSize: 26
+                    color: tile.selected ? Theme.fg : Theme.fgDim
+                    Behavior on color { ColorAnimation { duration: 180 } }
+                }
+
+                SettingsText {
+                    x: 76
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(0, tile.width - 100)
+                    text: tile.modelData.title
+                    font.pixelSize: 18
+                    font.weight: tile.selected ? Font.DemiBold : Font.Medium
+                    color: tile.selected ? Theme.fg : Theme.fgDim
+                    Behavior on color { ColorAnimation { duration: 180 } }
+                }
+
+                MouseArea {
+                    id: tileArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openCategory(tile.index)
                 }
             }
         }
-    }
 
-    // ---- right-hand settings panel ----
-    // Everything inside contentLayer shares one opacity and one slide.
-    Item {
-        id: contentLayer
-        x: (1 - root.reveal) * 40
-        y: root.contentShift
-        opacity: root.contentT
-
-        SettingsText {
-            x: 420; y: 132
-            text: root.currentCategory.title
-            font.pixelSize: 28
-            font.weight: Font.DemiBold
-        }
-        SettingsText {
-            x: 420; y: 174
-            width: 850
-            text: root.currentCategory.description
-            font.pixelSize: 14
-            color: Theme.fgDim
-        }
-
-        Rectangle {
-            x: 408; y: 210
-            width: 900; height: 476
-            radius: 20
-            color: Theme.glass
-            border.width: 1
-            border.color: Theme.glassBorder
-        }
-
-        // focus highlight: glides between rows, pulses on activation, bumps at the list ends
-        Rectangle {
-            id: rowHi
-            x: 424
-            y: 226 + root.rowIndex * root.rowPitch
-            width: 868; height: 74
-            radius: 12
-            color: Theme.glassHi
-            visible: root.currentRows.length > 0
-            opacity: root.pane === 1 ? 1 : 0.5
-            scale: 1 + 0.012 * root.pulse * (root.pane === 1 ? 1 : 0)
-            transform: Translate { y: root.pane === 1 ? root.nudge * 5 : 0 }
-            Behavior on y {
-                enabled: !root.switching
+        // One ring glides between the category tiles. Same ring, same overlay shade as everywhere.
+        GlassRing {
+            readonly property real out: 3.5
+            x: root.tileX(root.categoryIndex) - out
+            y: root.tileY(root.categoryIndex) - out
+            width: root.tileW + 2 * out
+            height: root.tileH + 2 * out
+            radius: 3 + out
+            thickness: 2.5
+            shade: true
+            trigger: root.categoryIndex
+            animated: gridLayer.visible
+            z: 3
+            Behavior on x {
                 NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
             }
-            Behavior on opacity { NumberAnimation { duration: 180 } }
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "transparent"
-                border.width: 1
-                border.color: Theme.glassBorder
-                opacity: root.pane === 1 ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 160 } }
-            }
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: "transparent"
-                border.width: 2
-                border.color: Theme.accent
-                opacity: root.armed !== "" ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 160 } }
-            }
-            Rectangle {
-                x: 7
-                anchors.verticalCenter: parent.verticalCenter
-                width: 3; height: 30
-                radius: 1.5
-                color: Theme.accent
-                opacity: root.pane === 1 ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 160 } }
+            Behavior on y {
+                NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
             }
         }
+    }
 
-        Column {
-            x: 424; y: 226
-            width: 868
-            spacing: 3
-            Repeater {
-                // keyed on the count: live updates change text in place, they never rebuild rows
-                model: root.currentRows.length
-                delegate: Item {
-                    id: settingRow
-                    required property int index
-                    readonly property var row: root.currentRows[index] || root.emptyRow
-                    readonly property string action: row.action
-                    readonly property string kind: row.kind
-                    readonly property bool selected: root.rowIndex === index && root.pane === 1
-                    readonly property bool isOn: kind === "toggle" && root.toggleOn(action)
-                    readonly property bool armedNow: root.armed !== "" && root.armed === action
-                    readonly property real enter: Math.max(0, Math.min(1, root.contentT * 1.5 - index * 0.07))
-                    width: 868
-                    height: 74
-                    x: (1 - enter) * 14
+    // =====================================================================
+    // pane 1 · the reusable category page
+    // =====================================================================
+    Item {
+        id: menuLayer
+        anchors.fill: parent
+        enabled: root.pane === 1
+        visible: opacity > 0.01
+        opacity: root.pageT
+        scale: 0.955 + 0.045 * root.pageT
+        transformOrigin: Item.Center
 
-                    // hover / press surface (opacity, not colour, so it never passes through black)
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 12
-                        color: rowArea.pressed ? Theme.glassHi : Theme.glass
-                        opacity: (rowArea.pressed || (rowArea.containsMouse && !settingRow.selected)) ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 140 } }
-                    }
-                    Column {
-                        x: 20
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 540
-                        spacing: 5
-                        SettingsText {
-                            width: parent.width
-                            text: settingRow.row.title
-                            font.pixelSize: 17
-                            font.weight: settingRow.selected ? Font.DemiBold : Font.Medium
-                        }
-                        SettingsText {
-                            width: parent.width
-                            text: settingRow.row.desc
-                            font.pixelSize: 12
-                            color: Theme.fgDim
-                        }
-                    }
-                    SettingsText {
-                        id: valueLabel
-                        anchors.right: parent.right
-                        anchors.rightMargin: 48
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 230
-                        text: root.valueFor(settingRow.action)
-                        visible: settingRow.kind !== "toggle"
-                        horizontalAlignment: Text.AlignRight
-                        font.pixelSize: 14
-                        color: settingRow.armedNow ? Theme.accent : (settingRow.selected ? Theme.fg : Theme.fgDim)
-                        Behavior on color { ColorAnimation { duration: 160 } }
-                        SequentialAnimation {
-                            running: settingRow.armedNow && root.visible
-                            loops: Animation.Infinite
-                            onRunningChanged: if (!running) valueLabel.opacity = 1
-                            NumberAnimation { target: valueLabel; property: "opacity"; to: 0.45; duration: 520; easing.type: Easing.InOutSine }
-                            NumberAnimation { target: valueLabel; property: "opacity"; to: 1; duration: 520; easing.type: Easing.InOutSine }
-                        }
-                    }
+        SettingsMenu {
+            x: root.padX
+            y: 38
+            width: root.innerW
+            height: root.height - 38 - 70
 
-                    // toggle switch: the thumb squashes while pressed and settles with a small overshoot
-                    Item {
-                        visible: settingRow.kind === "toggle"
-                        anchors.right: parent.right
-                        anchors.rightMargin: 50
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 44; height: 24
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 12
-                            color: settingRow.isOn ? Theme.accent : Theme.glassHi
-                            border.width: 1
-                            border.color: Theme.glassBorder
-                            Behavior on color { ColorAnimation { duration: 200 } }
-                        }
-                        Rectangle {
-                            y: 3
-                            x: settingRow.isOn ? (rowArea.pressed ? 19 : 23) : 3
-                            width: rowArea.pressed ? 22 : 18
-                            height: 18
-                            radius: 9
-                            color: settingRow.isOn ? Theme.accentText : Theme.fgDim
-                            Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.3 } }
-                            Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutQuad } }
-                            Behavior on color { ColorAnimation { duration: 200 } }
-                        }
-                    }
+            category: root.currentCategory
+            rows: root.currentRows
+            currentIndex: root.rowIndex
+            armed: root.armed
+            running: menuLayer.visible
+            valueOf: root.valueFor
+            toggleOf: root.toggleOn
+            fractionOf: root.fractionFor
 
-                    // slider: generous hit area, knob that grows on hover / drag, no lag while dragging
-                    Item {
-                        id: slider
-                        visible: settingRow.kind === "slider"
-                        z: 2
-                        anchors.right: parent.right
-                        anchors.rightMargin: 48
-                        y: 50
-                        width: 112; height: 14
-                        readonly property real value: settingRow.action === "volume" ? root.volumeShown : root.brightnessShown
-                        Rectangle {
-                            id: track
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width; height: 4
-                            radius: 2
-                            color: Theme.glassHi
-                            Rectangle {
-                                height: parent.height
-                                radius: 2
-                                width: parent.width * slider.value
-                                color: Theme.accent
-                                Behavior on width {
-                                    enabled: !sliderArea.pressed
-                                    NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-                                }
-                            }
-                        }
-                        Rectangle {
-                            width: 12; height: 12
-                            radius: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: track.width * slider.value - 6
-                            color: Theme.fg
-                            scale: sliderArea.pressed ? 1.35 : ((settingRow.selected || sliderArea.containsMouse) ? 1 : 0)
-                            Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 2 } }
-                            Behavior on x {
-                                enabled: !sliderArea.pressed
-                                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-                            }
-                        }
-                        MouseArea {
-                            id: sliderArea
-                            anchors.fill: parent
-                            anchors.margins: -10
-                            hoverEnabled: true
-                            preventStealing: true
-                            cursorShape: Qt.PointingHandCursor
-                            onPressed: mouse => {
-                                root.pane = 1;
-                                root.rowIndex = settingRow.index;
-                                root.setSliderAt(settingRow.action, (mouse.x - 10) / slider.width);
-                            }
-                            onPositionChanged: mouse => {
-                                if (pressed) root.setSliderAt(settingRow.action, (mouse.x - 10) / slider.width);
-                            }
-                            onReleased: root.endSliderDrag()
-                            onCanceled: root.endSliderDrag()
-                        }
-                    }
-
-                    SettingsText {
-                        anchors.right: parent.right
-                        anchors.rightMargin: settingRow.selected && settingRow.kind === "action" ? 14 : 18
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: settingRow.kind === "action" ? "›"
-                            : ((settingRow.kind === "cycle" || settingRow.kind === "slider") && settingRow.selected ? "‹ ›" : "")
-                        font.pixelSize: settingRow.kind === "action" ? 25 : 13
-                        color: Theme.fgDim
-                        Behavior on anchors.rightMargin { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.leftMargin: 18
-                        anchors.rightMargin: 18
-                        height: 1
-                        color: Theme.glassBorder
-                        visible: index < root.currentRows.length - 1
-                    }
-                    MouseArea {
-                        id: rowArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: settingRow.kind === "info" ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: {
-                            root.pane = 1;
-                            root.rowIndex = settingRow.index;
-                            if (settingRow.kind === "cycle") root.adjust(1);
-                            else root.activate();
-                        }
-                    }
-                }
-            }
+            onActivated: root.activate()
+            onAdjusted: delta => root.adjust(delta)
+            onRowClicked: index => root.menuRowClicked(index)
+            onSliderAt: (action, fraction) => root.setSliderAt(action, fraction)
+            onSliderEnd: root.endSliderDrag()
         }
     }
 
     // ---- inline feedback: loading, success and error stay inside the shell ----
-    Rectangle {
+    Item {
         id: pill
         readonly property bool shown: root.statusText !== ""
-        x: 58 - (shown ? 0 : 10)
-        y: 696
-        width: Math.min(520, Math.max(260, pillRow.implicitWidth + 44))
+        x: root.padX - (shown ? 0 : 10)
+        y: root.height - 66
+        width: Math.min(520, pillRow.implicitWidth)
         height: 30
-        radius: 15
         visible: opacity > 0.01
         opacity: shown ? 1 : 0
         scale: shown ? 1 : 0.96
         transformOrigin: Item.Left
-        color: Theme.glassHi
-        border.width: 1
-        border.color: Theme.glassBorder
         Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
         Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
         Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
         Row {
             id: pillRow
-            anchors.centerIn: parent
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 10
             SettingsText {
                 id: spinner

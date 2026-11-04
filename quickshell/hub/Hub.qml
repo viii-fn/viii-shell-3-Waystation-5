@@ -103,7 +103,7 @@ PanelWindow {
     }
 
     function tint() {
-        if (!shown || !isFocusedMon || !sel) return;
+        if (!shown || !isFocusedMon || !sel || settingsOpen) return;
         Apps.request(sel);
         Theme.applyPalette(Apps.paletteFor(sel));
     }
@@ -324,19 +324,11 @@ PanelWindow {
             anchors.fill: parent
             icon: win.iconUrl(win.sel)
             shown: win.shown
-            wallpaper: win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true)
-            news: win.page === 0 && !!win.sel && win.sel.isExplore === true && home.newsSrc.toString() !== ""
+            wallpaper: win.settingsOpen || settings.reveal > 0.01 || (win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true))
+            dim: (win.settingsOpen || settings.reveal > 0.01) ? 0.45 : 0.28
+            news: !win.settingsOpen && settings.reveal < 0.01 && win.page === 0 && !!win.sel && win.sel.isExplore === true && home.newsSrc.toString() !== ""
+            ghost: !win.settingsOpen && settings.reveal < 0.01
             newsImg: home.newsSrc
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            opacity: settings.reveal
-            visible: opacity > 0.01
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.84) }
-                GradientStop { position: 1.0; color: Qt.rgba(Theme.deep.r, Theme.deep.g, Theme.deep.b, 0.93) }
-            }
         }
 
         Item {
