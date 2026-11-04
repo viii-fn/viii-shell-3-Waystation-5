@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -8,7 +9,7 @@ import "../hub"
 
 // Screenshot pane (Print key). One window per monitor, shown only on the focused one.
 // Flow: grim freezes the screen first (so the pane is never in the picture), then the pane offers
-// Region / Window / Screen. Region has rulers, a crosshair and a pixel magnifier; Window highlights
+// Region / Window / Screen. Region has a crosshair and a pixel magnifier; Window highlights
 // the window under the cursor. The result is cropped from the frozen image, saved to
 // ~/Pictures/Screenshots, copied to the clipboard, and announced with a toast.
 PanelWindow {
@@ -348,12 +349,23 @@ PanelWindow {
             ? selRect
             : Qt.rect(lastRect.x + lastRect.width / 2, lastRect.y + lastRect.height / 2, 0, 0))
 
-    // ---- scene --------------------------------------------------------------------------------
+    // ---- scene (viii-shot2) ----------------------------------------------------------------
+    // Sony-style capture UI: the frozen screen dims, one glass panel offers Region / Window / Screen with
+    // the same selection ring as the rest of the shell, and the ring also outlines the captured area.
+    // No rulers. Only opacity / x / y / scale and colours are animated.
     FocusScope {
         id: root
         anchors.fill: parent
         focus: true
         Keys.onPressed: event => win.handleKey(event)
+
+        readonly property color dimColor: Qt.alpha(Theme.deep, 0.60 * win.pv)
+        // bumped when the Window-mode highlight lands on another window, so the ring shade plays again
+        property int winTick: 0
+        Connections {
+            target: win
+            function onHoverWinChanged() { root.winTick++; }
+        }
 
         // the frozen screen
         Image {
@@ -369,25 +381,40 @@ PanelWindow {
         }
 
         // dim everywhere except the selection (four rectangles around it)
-        Rectangle { x: 0; y: 0; width: win.width; height: selBox.y; color: Qt.rgba(0, 0, 0, 0.5 * win.pv) }
-        Rectangle { x: 0; y: selBox.y + selBox.height; width: win.width; height: Math.max(0, win.height - selBox.y - selBox.height); color: Qt.rgba(0, 0, 0, 0.5 * win.pv) }
-        Rectangle { x: 0; y: selBox.y; width: selBox.x; height: selBox.height; color: Qt.rgba(0, 0, 0, 0.5 * win.pv) }
-        Rectangle { x: selBox.x + selBox.width; y: selBox.y; width: Math.max(0, win.width - selBox.x - selBox.width); height: selBox.height; color: Qt.rgba(0, 0, 0, 0.5 * win.pv) }
+        Rectangle { x: 0; y: 0; width: win.width; height: selBox.y; color: root.dimColor }
+        Rectangle { x: 0; y: selBox.y + selBox.height; width: win.width; height: Math.max(0, win.height - selBox.y - selBox.height); color: root.dimColor }
+        Rectangle { x: 0; y: selBox.y; width: selBox.x; height: selBox.height; color: root.dimColor }
+        Rectangle { x: selBox.x + selBox.width; y: selBox.y; width: Math.max(0, win.width - selBox.x - selBox.width); height: selBox.height; color: root.dimColor }
 
-        // the selection box (glides between windows in Window mode, follows the mouse in Region mode)
-        Rectangle {
+        // the selection geometry (glides between windows in Window mode, follows the mouse in Region mode)
+        Item {
             id: selBox
             x: win.target.x
             y: win.target.y
             width: win.target.width
             height: win.target.height
-            color: "transparent"
-            border.width: width > 1 ? 2 : 0
-            border.color: Qt.alpha(Theme.fg, win.flashing ? win.pv : 1)
             Behavior on x { enabled: win.mode === "window"; NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
             Behavior on y { enabled: win.mode === "window"; NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
             Behavior on width { enabled: win.mode === "window"; NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
             Behavior on height { enabled: win.mode === "window"; NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        }
+
+        // the ring outlines the area that will be captured
+        GlassRing {
+            readonly property real out: 3
+            x: selBox.x - out
+            y: selBox.y - out
+            width: selBox.width + 2 * out
+            height: selBox.height + 2 * out
+            radius: 8 + out
+            thickness: 2.5
+            shade: win.mode === "window"
+            trigger: root.winTick
+            animated: visible
+            opacity: ((win.open || win.flashing) && win.mode !== "pane" && selBox.width > 2 && selBox.height > 2)
+                ? (win.flashing ? win.pv : 1) : 0
+            visible: opacity > 0.01
+            Behavior on opacity { enabled: !win.flashing; NumberAnimation { duration: 140 } }
         }
 
         // the capture flash
@@ -399,26 +426,26 @@ PanelWindow {
             visible: win.flashing && win.flashA > 0.01
         }
 
-        // size / title chip on the selection
+        // size / title chip above the selection
         Rectangle {
             id: chip
             visible: opacity > 0.01
             opacity: (win.open && win.mode !== "pane" && selBox.width > 30) ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 140 } }
-            x: Math.min(selBox.x, win.width - width - 8)
-            y: selBox.y > 40 ? selBox.y - height - 8 : selBox.y + 8
-            height: 26
-            width: chipText.width + 22
-            radius: 13
-            color: Qt.rgba(0.07, 0.078, 0.098, 0.92)
+            x: Math.max(8, Math.min(selBox.x, win.width - width - 8))
+            y: selBox.y > 52 ? selBox.y - height - 12 : selBox.y + 12
+            height: 28
+            width: chipText.width + 26
+            radius: 14
+            color: Qt.alpha(Theme.deep, 0.88)
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.16)
+            border.color: Qt.alpha(Theme.fg, 0.14)
             Txt {
                 id: chipText
                 anchors.centerIn: parent
                 width: Math.min(implicitWidth, 420)
                 font.pixelSize: 13
-                text: (win.mode === "window" && win.hoverWin ? win.hoverWin.t + "   " : "") + Math.round(selBox.width) + " x " + Math.round(selBox.height)
+                text: (win.mode === "window" && win.hoverWin ? win.hoverWin.t + "   \u00b7   " : "") + Math.round(selBox.width) + " \u00d7 " + Math.round(selBox.height)
             }
         }
 
@@ -461,7 +488,7 @@ PanelWindow {
             }
         }
 
-        // ---- Region mode: crosshair, rulers, magnifier ----
+        // ---- Region mode: crosshair, snap guides, handles, magnifier ----
         Item {
             id: regionUi
             anchors.fill: parent
@@ -469,15 +496,15 @@ PanelWindow {
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
-            // crosshair
-            Rectangle { x: Math.round(area.mouseX); y: 0; width: 1; height: win.height; color: Qt.rgba(1, 1, 1, 0.55); visible: area.containsMouse && win.zoneNow === "" }
-            Rectangle { x: 0; y: Math.round(area.mouseY); width: win.width; height: 1; color: Qt.rgba(1, 1, 1, 0.55); visible: area.containsMouse && win.zoneNow === "" }
+            // crosshair: two hairlines and a small ring at the cursor
+            Rectangle { x: Math.round(area.mouseX); y: 0; width: 1; height: win.height; color: Qt.rgba(1, 1, 1, 0.32); visible: area.containsMouse && win.zoneNow === "" }
+            Rectangle { x: 0; y: Math.round(area.mouseY); width: win.width; height: 1; color: Qt.rgba(1, 1, 1, 0.32); visible: area.containsMouse && win.zoneNow === "" }
             Rectangle {
-                x: Math.round(area.mouseX) - 5; y: Math.round(area.mouseY) - 5
-                width: 11; height: 11
+                x: Math.round(area.mouseX) - 6; y: Math.round(area.mouseY) - 6
+                width: 12; height: 12; radius: 6
                 color: "transparent"
-                border.width: 1
-                border.color: Theme.fg
+                border.width: 1.5
+                border.color: Qt.rgba(1, 1, 1, 0.95)
                 visible: area.containsMouse && win.zoneNow === ""
             }
 
@@ -485,7 +512,7 @@ PanelWindow {
             Rectangle { visible: win.dragging && win.guideX >= 0; x: win.guideX; y: 0; width: 1; height: win.height; color: Theme.accent }
             Rectangle { visible: win.dragging && win.guideY >= 0; x: 0; y: win.guideY; width: win.width; height: 1; color: Theme.accent }
 
-            // eight resize handles on the kept region
+            // eight round resize handles on the kept region
             Repeater {
                 model: 8
                 delegate: Rectangle {
@@ -493,72 +520,15 @@ PanelWindow {
                     readonly property real fx: [0, 0.5, 1, 1, 1, 0.5, 0, 0][index]
                     readonly property real fy: [0, 0, 0, 0.5, 1, 1, 1, 0.5][index]
                     visible: win.selW >= 12 && win.selH >= 12 && !(win.dragging && win.dragKind === "new")
-                    x: selBox.x + fx * selBox.width - 4.5
-                    y: selBox.y + fy * selBox.height - 4.5
-                    width: 9; height: 9
-                    radius: 3
+                    x: selBox.x + fx * selBox.width - 6
+                    y: selBox.y + fy * selBox.height - 6
+                    width: 12; height: 12
+                    radius: 6
                     color: Theme.fg
                     border.width: 1
-                    border.color: Qt.rgba(0, 0, 0, 0.5)
+                    border.color: Qt.rgba(0, 0, 0, 0.35)
                 }
             }
-
-            // rulers
-            Canvas {
-                id: rulerTop
-                x: 0; y: 0
-                width: win.width; height: 22
-                onVisibleChanged: if (visible) requestPaint()
-                onWidthChanged: requestPaint()
-                onPaint: {
-                    const ctx = getContext("2d");
-                    ctx.reset();
-                    ctx.fillStyle = "rgba(18,20,25,0.90)";
-                    ctx.fillRect(0, 0, width, height);
-                    ctx.strokeStyle = "rgba(255,255,255,0.5)";
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    for (let x = 0; x <= width; x += 10) {
-                        const len = x % 100 === 0 ? 14 : (x % 50 === 0 ? 10 : 6);
-                        ctx.moveTo(x + 0.5, height);
-                        ctx.lineTo(x + 0.5, height - len);
-                    }
-                    ctx.stroke();
-                    ctx.fillStyle = "rgba(255,255,255,0.7)";
-                    ctx.font = "10px " + Theme.fontFamily;
-                    for (let x = 100; x < width; x += 100) ctx.fillText(String(x), x + 3, 10);
-                }
-            }
-            Canvas {
-                id: rulerLeft
-                x: 0; y: 0
-                width: 22; height: win.height
-                onVisibleChanged: if (visible) requestPaint()
-                onHeightChanged: requestPaint()
-                onPaint: {
-                    const ctx = getContext("2d");
-                    ctx.reset();
-                    ctx.fillStyle = "rgba(18,20,25,0.90)";
-                    ctx.fillRect(0, 0, width, height);
-                    ctx.strokeStyle = "rgba(255,255,255,0.5)";
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    for (let y = 0; y <= height; y += 10) {
-                        const len = y % 100 === 0 ? 14 : (y % 50 === 0 ? 10 : 6);
-                        ctx.moveTo(width, y + 0.5);
-                        ctx.lineTo(width - len, y + 0.5);
-                    }
-                    ctx.stroke();
-                    ctx.fillStyle = "rgba(255,255,255,0.7)";
-                    ctx.font = "10px " + Theme.fontFamily;
-                    for (let y = 100; y < height; y += 100) ctx.fillText(String(y), 1, y - 3);
-                }
-            }
-            // selected range and cursor markers on the rulers
-            Rectangle { x: win.selRect.x; y: 0; width: win.selRect.width; height: 22; color: Qt.alpha(Theme.accent, 0.45) }
-            Rectangle { x: 0; y: win.selRect.y; width: 22; height: win.selRect.height; color: Qt.alpha(Theme.accent, 0.45) }
-            Rectangle { x: Math.round(area.mouseX) - 1; y: 0; width: 3; height: 22; color: Theme.fg; visible: area.containsMouse }
-            Rectangle { x: 0; y: Math.round(area.mouseY) - 1; width: 22; height: 3; color: Theme.fg; visible: area.containsMouse }
 
             // magnifier, beside the cursor (flips at the screen edges). Rounded square: the pixels are drawn
             // on a canvas with a rounded clip path.
@@ -572,11 +542,11 @@ PanelWindow {
                 visible: opacity > 0.01
                 Behavior on opacity { NumberAnimation { duration: 110 } }
                 readonly property bool flipX: area.mouseX + gapPx + box > win.width - 8
-                readonly property bool flipY: area.mouseY + gapPx + box + 32 > win.height - 8
+                readonly property bool flipY: area.mouseY + gapPx + box + 34 > win.height - 8
                 x: flipX ? area.mouseX - gapPx - box : area.mouseX + gapPx
-                y: flipY ? area.mouseY - gapPx - box - 32 : area.mouseY + gapPx
+                y: flipY ? area.mouseY - gapPx - box - 34 : area.mouseY + gapPx
                 width: box
-                height: box + 32
+                height: box + 34
 
                 Canvas {
                     id: magCanvas
@@ -627,8 +597,8 @@ PanelWindow {
                     }
                 }
                 // centre lines and the middle pixel
-                Rectangle { x: 0; y: mag.box / 2 - 0.5; width: mag.box; height: 1; color: Qt.rgba(1, 1, 1, 0.20) }
-                Rectangle { x: mag.box / 2 - 0.5; y: 0; width: 1; height: mag.box; color: Qt.rgba(1, 1, 1, 0.20) }
+                Rectangle { x: 0; y: mag.box / 2 - 0.5; width: mag.box; height: 1; color: Qt.rgba(1, 1, 1, 0.18) }
+                Rectangle { x: mag.box / 2 - 0.5; y: 0; width: 1; height: mag.box; color: Qt.rgba(1, 1, 1, 0.18) }
                 Rectangle {
                     x: (mag.box - mag.zoom) / 2; y: (mag.box - mag.zoom) / 2
                     width: mag.zoom; height: mag.zoom
@@ -642,15 +612,15 @@ PanelWindow {
                     radius: mag.corner
                     color: "transparent"
                     border.width: 2
-                    border.color: Qt.rgba(1, 1, 1, 0.9)
+                    border.color: Qt.rgba(1, 1, 1, 0.92)
                 }
                 Rectangle {
-                    y: mag.box + 6
-                    width: mag.box; height: 24
-                    radius: 12
-                    color: Qt.rgba(0.07, 0.078, 0.098, 0.92)
+                    y: mag.box + 8
+                    width: mag.box; height: 26
+                    radius: 13
+                    color: Qt.alpha(Theme.deep, 0.88)
                     border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.16)
+                    border.color: Qt.alpha(Theme.fg, 0.14)
                     Txt {
                         anchors.centerIn: parent
                         font.pixelSize: 13
@@ -660,146 +630,285 @@ PanelWindow {
             }
         }
 
-        // Capture / Redo pill under the kept region
+        // ---- Capture / Redo bar under the kept region ----
         Item {
             id: pill
             readonly property bool show: win.open && win.mode === "region" && win.selW >= 4 && win.selH >= 4 && !win.dragging
             opacity: show ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 140 } }
-            width: pillRow.width + 20
-            height: 40
+            width: pillRow.width + 44
+            height: 58
             x: Math.max(8, Math.min(win.width - width - 8, selBox.x + selBox.width / 2 - width / 2))
-            y: (selBox.y + selBox.height + 14 + height < win.height - 6) ? selBox.y + selBox.height + 14 : selBox.y + selBox.height - height - 12
+            y: (selBox.y + selBox.height + 20 + height < win.height - 6) ? selBox.y + selBox.height + 20 : selBox.y + selBox.height - height - 16
 
             Rectangle {
                 anchors.fill: parent
-                radius: 20
-                color: Qt.rgba(0.07, 0.078, 0.098, 0.94)
+                radius: 29
+                color: Qt.alpha(Theme.deep, 0.90)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.16)
+                border.color: Qt.alpha(Theme.fg, 0.10)
             }
-            MouseArea { anchors.fill: parent }      // clicks on the pill never start a new selection
+            MouseArea { anchors.fill: parent }      // clicks on the bar never start a new selection
+
             Row {
                 id: pillRow
                 anchors.centerIn: parent
-                spacing: 12
-                Rectangle {
-                    width: capText.width + 28
-                    height: 28
-                    radius: 14
-                    color: Theme.fg
-                    Txt {
-                        id: capText
+                spacing: 22
+
+                // Redo
+                Item {
+                    width: redoRow.width
+                    height: 38
+                    Row {
+                        id: redoRow
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 9
+                        Rectangle {
+                            width: escText.implicitWidth + 14; height: 20; radius: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Qt.alpha(Theme.fg, 0.07)
+                            border.width: 1
+                            border.color: Qt.alpha(Theme.fg, 0.22)
+                            Txt { id: escText; anchors.centerIn: parent; text: "Esc"; font.pixelSize: 11; color: Theme.fgDim }
+                        }
+                        Txt { anchors.verticalCenter: parent.verticalCenter; text: "Redo"; font.pixelSize: 14; color: Theme.fgDim }
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.back() }
+                }
+
+                // Capture: the focused button wears the ring
+                Item {
+                    id: capBtn
+                    width: capRow.width + 38
+                    height: 38
+                    Rectangle { anchors.fill: parent; radius: 19; color: Theme.fg }
+                    Row {
+                        id: capRow
                         anchors.centerIn: parent
-                        text: "Capture  (Enter)"
-                        font.pixelSize: 13
-                        font.weight: Font.DemiBold
-                        color: "#0b0d12"
+                        spacing: 10
+                        Txt { anchors.verticalCenter: parent.verticalCenter; text: "Capture"; font.pixelSize: 14; font.weight: Font.DemiBold; color: "#0b0d12" }
+                        Rectangle {
+                            width: capKey.implicitWidth + 12; height: 18; radius: 5
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Qt.rgba(0, 0, 0, 0.12)
+                            Txt { id: capKey; anchors.centerIn: parent; text: "Enter"; font.pixelSize: 10; color: "#0b0d12" }
+                        }
                     }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: win.snap()
+                    GlassRing {
+                        readonly property real out: 3.5
+                        x: -out; y: -out
+                        width: capBtn.width + 2 * out
+                        height: capBtn.height + 2 * out
+                        radius: 19 + out
+                        thickness: 2
+                        shade: false
+                        animated: pill.visible
                     }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: win.snap() }
                 }
             }
         }
 
-        // ---- the pane: Region / Window / Screen ----
+        // ---- the panel: Region / Window / Screen ----
         Item {
             id: bar
-            width: 376
-            height: 124
-            scale: win.s * (0.9 + 0.1 * win.pop)
+            readonly property real pad: 22
+            readonly property real tileW: 150
+            readonly property real tileH: 118
+            readonly property real gap: 14
+            readonly property real tilesY: 62
+            readonly property var names: ["Region", "Window", "Screen"]
+            readonly property var descriptions: ["Select an area of the screen", "Capture a single window", "Capture the whole screen"]
+
+            width: pad * 2 + tileW * 3 + gap * 2
+            height: 238
+            scale: win.s * (0.92 + 0.08 * win.pop)
             transformOrigin: Item.Bottom
             x: (win.width - width) / 2
-            y: win.height - height - 40 * win.s + (1 - win.pop) * 26
+            y: win.height - height - 44 * win.s + (1 - win.pop) * 26
             opacity: (win.open && win.mode === "pane") ? Math.min(1, win.pv * 1.4) : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
             Rectangle {
                 anchors.fill: parent
-                radius: 22
-                color: Qt.rgba(0.07, 0.078, 0.098, 0.94)
+                radius: 28
+                color: Qt.alpha(Theme.deep, 0.90)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.14)
+                border.color: Qt.alpha(Theme.fg, 0.10)
+            }
+            MouseArea { anchors.fill: parent }      // clicks on the panel itself do nothing (they used to dismiss it)
+
+            // header
+            Txt {
+                x: bar.pad; y: 20
+                text: "Screenshot"
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+            }
+            Txt {
+                anchors.right: parent.right
+                anchors.rightMargin: bar.pad
+                y: 23
+                width: Math.min(implicitWidth, 270)
+                horizontalAlignment: Text.AlignRight
+                text: bar.descriptions[win.choice]
+                font.pixelSize: 13
+                color: Theme.fgDim
             }
 
-            // one focus highlight that glides between the three options (small overshoot)
-            Rectangle {
-                x: 12 + win.choice * 120
-                y: 12
-                width: 112; height: 72
-                radius: 16
-                color: Qt.rgba(1, 1, 1, 0.12)
-                border.width: 2
-                border.color: Theme.fg
-                Behavior on x { NumberAnimation { duration: 340; easing.type: Easing.BezierSpline; easing.bezierCurve: win.spring } }
-            }
-
+            // the three options
             Repeater {
-                model: ["Region", "Window", "Screen"]
+                model: bar.names
                 delegate: Item {
                     id: opt
                     required property string modelData
                     required property int index
-                    x: 12 + index * 120
-                    y: 12
-                    width: 112; height: 72
+                    readonly property bool selected: win.choice === index
+
+                    x: bar.pad + index * (bar.tileW + bar.gap)
+                    y: bar.tilesY
+                    width: bar.tileW
+                    height: bar.tileH
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 16
+                        color: opt.selected ? Qt.alpha(Theme.fg, 0.10) : Qt.alpha(Theme.fg, 0.045)
+                        Behavior on color { ColorAnimation { duration: 200 } }
+                    }
 
                     Item {
                         id: icon
                         x: (parent.width - width) / 2
-                        y: 11
-                        width: 34; height: 26
-                        scale: win.choice === opt.index ? 1.12 : 1
+                        y: 26
+                        width: 48; height: 38
+                        property color ink: opt.selected ? Theme.fg : Theme.fgDim
+                        Behavior on ink { ColorAnimation { duration: 180 } }
+                        scale: opt.selected ? 1.1 : 1
                         Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: win.spring } }
 
-                        // region: four corner brackets
+                        // Region: four rounded corner brackets and a centre dot
                         Item {
                             anchors.fill: parent
                             visible: opt.index === 0
-                            Rectangle { x: 0; y: 0; width: 10; height: 3; color: Theme.fg }
-                            Rectangle { x: 0; y: 0; width: 3; height: 10; color: Theme.fg }
-                            Rectangle { x: 24; y: 0; width: 10; height: 3; color: Theme.fg }
-                            Rectangle { x: 31; y: 0; width: 3; height: 10; color: Theme.fg }
-                            Rectangle { x: 0; y: 23; width: 10; height: 3; color: Theme.fg }
-                            Rectangle { x: 0; y: 16; width: 3; height: 10; color: Theme.fg }
-                            Rectangle { x: 24; y: 23; width: 10; height: 3; color: Theme.fg }
-                            Rectangle { x: 31; y: 16; width: 3; height: 10; color: Theme.fg }
+                            Shape {
+                                anchors.fill: parent
+                                preferredRendererType: Shape.CurveRenderer
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 3; startY: 14
+                                    PathLine { x: 3; y: 9 }
+                                    PathQuad { x: 9; y: 3; controlX: 3; controlY: 3 }
+                                    PathLine { x: 15; y: 3 }
+                                }
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 33; startY: 3
+                                    PathLine { x: 39; y: 3 }
+                                    PathQuad { x: 45; y: 9; controlX: 45; controlY: 3 }
+                                    PathLine { x: 45; y: 14 }
+                                }
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 3; startY: 24
+                                    PathLine { x: 3; y: 29 }
+                                    PathQuad { x: 9; y: 35; controlX: 3; controlY: 35 }
+                                    PathLine { x: 15; y: 35 }
+                                }
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 33; startY: 35
+                                    PathLine { x: 39; y: 35 }
+                                    PathQuad { x: 45; y: 29; controlX: 45; controlY: 35 }
+                                    PathLine { x: 45; y: 24 }
+                                }
+                            }
+                            Rectangle { x: 21.5; y: 16.5; width: 5; height: 5; radius: 2.5; color: icon.ink }
                         }
-                        // window: a frame with a title bar
+
+                        // Window: a rounded window with a title bar and three dots
                         Item {
                             anchors.fill: parent
                             visible: opt.index === 1
-                            Rectangle { anchors.fill: parent; radius: 5; color: "transparent"; border.width: 3; border.color: Theme.fg }
-                            Rectangle { x: 0; y: 8; width: 34; height: 3; color: Theme.fg }
+                            Shape {
+                                anchors.fill: parent
+                                preferredRendererType: Shape.CurveRenderer
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 10; startY: 3
+                                    PathLine { x: 38; y: 3 }
+                                    PathQuad { x: 45; y: 10; controlX: 45; controlY: 3 }
+                                    PathLine { x: 45; y: 28 }
+                                    PathQuad { x: 38; y: 35; controlX: 45; controlY: 35 }
+                                    PathLine { x: 10; y: 35 }
+                                    PathQuad { x: 3; y: 28; controlX: 3; controlY: 35 }
+                                    PathLine { x: 3; y: 10 }
+                                    PathQuad { x: 10; y: 3; controlX: 3; controlY: 3 }
+                                }
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    startX: 3; startY: 14
+                                    PathLine { x: 45; y: 14 }
+                                }
+                            }
+                            Rectangle { x: 9; y: 7; width: 3; height: 3; radius: 1.5; color: icon.ink }
+                            Rectangle { x: 15; y: 7; width: 3; height: 3; radius: 1.5; color: icon.ink }
+                            Rectangle { x: 21; y: 7; width: 3; height: 3; radius: 1.5; color: icon.ink }
                         }
-                        // screen: a monitor on a stand
+
+                        // Screen: a monitor on a stand
                         Item {
                             anchors.fill: parent
                             visible: opt.index === 2
-                            Rectangle { x: 0; y: 0; width: 34; height: 21; radius: 4; color: "transparent"; border.width: 3; border.color: Theme.fg }
-                            Rectangle { x: 15; y: 21; width: 4; height: 3; color: Theme.fg }
-                            Rectangle { x: 9; y: 24; width: 16; height: 2; radius: 1; color: Theme.fg }
+                            Shape {
+                                anchors.fill: parent
+                                preferredRendererType: Shape.CurveRenderer
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                                    startX: 9; startY: 3
+                                    PathLine { x: 39; y: 3 }
+                                    PathQuad { x: 45; y: 9; controlX: 45; controlY: 3 }
+                                    PathLine { x: 45; y: 21 }
+                                    PathQuad { x: 39; y: 27; controlX: 45; controlY: 27 }
+                                    PathLine { x: 9; y: 27 }
+                                    PathQuad { x: 3; y: 21; controlX: 3; controlY: 27 }
+                                    PathLine { x: 3; y: 9 }
+                                    PathQuad { x: 9; y: 3; controlX: 3; controlY: 3 }
+                                }
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    startX: 24; startY: 27
+                                    PathLine { x: 24; y: 34 }
+                                }
+                                ShapePath {
+                                    strokeColor: icon.ink; strokeWidth: 3; fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    startX: 15; startY: 35
+                                    PathLine { x: 33; y: 35 }
+                                }
+                            }
                         }
                     }
 
                     Txt {
-                        x: 0; y: 45
+                        x: 0; y: 80
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         text: opt.modelData
-                        font.pixelSize: 16
-                        font.weight: Font.DemiBold
-                    }
-                    Txt {
-                        x: parent.width - width - 9; y: 6
-                        text: String(opt.index + 1)
-                        font.pixelSize: 11
-                        color: Theme.fgDim
+                        font.pixelSize: 17
+                        font.weight: opt.selected ? Font.DemiBold : Font.Medium
+                        color: opt.selected ? Theme.fg : Theme.fgDim
+                        Behavior on color { ColorAnimation { duration: 180 } }
                     }
 
                     MouseArea {
@@ -808,6 +917,44 @@ PanelWindow {
                         cursorShape: Qt.PointingHandCursor
                         onEntered: win.choice = opt.index
                         onClicked: win.pick(opt.index)
+                    }
+                }
+            }
+
+            // the same ring as the hub, gliding between the three options
+            GlassRing {
+                readonly property real out: 3.5
+                x: bar.pad + win.choice * (bar.tileW + bar.gap) - out
+                y: bar.tilesY - out
+                width: bar.tileW + 2 * out
+                height: bar.tileH + 2 * out
+                radius: 16 + out
+                thickness: 2.5
+                shade: true
+                trigger: win.choice
+                animated: bar.visible
+                z: 3
+                Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+            }
+
+            // key hints
+            Row {
+                x: bar.pad
+                y: bar.height - bar.pad - 20
+                spacing: 20
+                Repeater {
+                    model: [ { k: "\u2190  \u2192", t: "Move" }, { k: "Enter", t: "Choose" }, { k: "Esc", t: "Cancel" } ]
+                    delegate: Row {
+                        required property var modelData
+                        spacing: 8
+                        Rectangle {
+                            width: keyText.implicitWidth + 14; height: 20; radius: 6
+                            color: Qt.alpha(Theme.fg, 0.07)
+                            border.width: 1
+                            border.color: Qt.alpha(Theme.fg, 0.22)
+                            Txt { id: keyText; anchors.centerIn: parent; text: modelData.k; font.pixelSize: 11; color: Theme.fgDim }
+                        }
+                        Txt { anchors.verticalCenter: parent.verticalCenter; text: modelData.t; font.pixelSize: 13; color: Theme.fgDim }
                     }
                 }
             }
