@@ -1,61 +1,62 @@
-// viii-ring-v7
+// viii-ring-v8
 import QtQuick
 import QtQuick.Shapes
 
 // The PS5 selection ring.
-//  * ring: on every new selection it fades in from the LEFT to the RIGHT until it is a full ring, stays full,
-//    and repeats on the same interval as the shade (it quickly fades out, then wipes in again)
-//  * shade: a wide soft diagonal band fades in from the TOP-LEFT to the BOTTOM-RIGHT over whatever the ring
-//    surrounds, then goes off. It starts together with the ring and repeats on the same interval.
-// One animation (`cycle`) drives both. Only opacity / position numbers animate (no offscreen buffers).
+//  * ring: fully drawn at all times; a bright band in its conical gradient orbits slowly
+//    and forever. There is no wipe-in / fade-out repeat cycle anymore.
+//  * shade: a wide soft diagonal band sweeps over the content on selection and then
+//    repeats on its own interval. The spin is independent of that interval.
 Item {
     id: root
     property real radius: 16            // outer radius
     property real thickness: 2.5
     property bool shade: true           // gradient shade over the content
-    property int trigger: 0             // change it to replay the intro
+    property int trigger: 0             // change it to replay the shade sweep
     property bool animated: true
 
     // ---- tuning (design values, change here) ----
-    readonly property int ringRevealMs: 700      // ring wipes in left -> right
-    readonly property int ringOutMs: 220            // ring fades out right before the next repeat
-    readonly property real ringSoft: 0.35           // softness of the wipe edge (0..1 of the width)
-    readonly property int shadeUpMs: 10        // shade 0 -> peak
-    readonly property int shadeHoldMs: 4      // shade stays at its peak
-    readonly property int shadeDownMs: 1300     // shade peak -> 0 (the diagonal sweep lasts up+hold+down)
-    readonly property int shadeRepeatMs: 4300   // pause before ring + shade play again (0 = only on selection)
+    readonly property int spinMs: 9000          // one full turn of the ring gradient (slow)
+    readonly property int shadeUpMs: 10         // shade 0 -> peak
+    readonly property int shadeHoldMs: 4        // shade stays at its peak
+    readonly property int shadeDownMs: 1300     // shade peak -> 0 (the diagonal sweep)
+    readonly property int shadeRepeatMs: 5500   // pause before the shade sweeps again (0 = only on selection)
     readonly property real shadePeak: 1.0       // overall strength of the shade (1 = as designed)
-    readonly property real shadeSoft: 0.8          // half-width of the diagonal band (bigger = wider, softer)
+    readonly property real shadeSoft: 0.8       // half-width of the diagonal band (bigger = wider, softer)
 
-    property real reveal: 1             // ring wipe front, -ringSoft .. 1
-    property real ringOpacity: 1
+    property real spin: 0               // angle of the conical ring gradient
     property real pulse: 0              // 0..1 shade strength
     property real wave: -0.45           // diagonal band position, -shadeSoft .. 1 + shadeSoft
 
     readonly property real outerR: Math.max(0, Math.min(radius, Math.min(width, height) / 2))
     readonly property real th: thickness
     readonly property real innerR: Math.max(0, outerR - th)
-    readonly property real rA: Math.max(0, Math.min(0.999, reveal))
-    readonly property real rB: Math.max(0, Math.min(1, reveal + ringSoft))
     readonly property real wLo: Math.max(0, Math.min(1, wave - shadeSoft))
     readonly property real wMid: Math.max(0, Math.min(1, wave))
     readonly property real wHi: Math.max(0, Math.min(1, wave + shadeSoft))
+    // Width of the ring's bright -> transparent transition, in gradient angle. It grows
+    // gently with the ring size so a big card ring fades as softly as a small button.
+    readonly property real ramp: Math.max(0.08, Math.min(0.15, 0.075 + 0.00020 * Math.max(width, height)))
     // brightness of the diagonal band at position t (0..1) when its centre is at w and its half-width is sw;
     // every gradient stop asks this, so a band that is half outside the tile ramps in/out instead of popping
     function bandAlpha(t, w, sw) { return 0.58 * Math.max(0, 1 - Math.abs(t - w) / sw); }
+    // ring alpha at gradient position t: 0.95 (bright) outside the gap, 0.33 (about a third
+    // of the bright half) across half of the ring, with a smoothstep fade in between.
+    function ringAlpha(t) {
+        const lo = 0.25, hi = 0.75, low = 0.33;
+        if (t >= lo && t <= hi) return low;
+        const d = t < lo ? lo - t : t - hi;
+        if (d >= root.ramp) return 0.95;
+        const x = d / root.ramp;
+        return low + (0.95 - low) * x * x * (3 - 2 * x);
+    }
 
     function play() {
         if (!animated) return;
-        reveal = -ringSoft;
-        ringOpacity = 1;
-        pulse = 0;
-        wave = -shadeSoft;
-        cycle.restart();
+        shadeCycle.restart();
     }
     function halt() {
-        cycle.stop();
-        reveal = 1;
-        ringOpacity = 1;
+        shadeCycle.stop();
         pulse = 0;
         wave = -shadeSoft;
     }
@@ -63,11 +64,20 @@ Item {
     onTriggerChanged: { if (visible) play(); }
     Component.onCompleted: if (visible) play()
 
+    // The highlight orbits forever. 360 degrees looks the same as 0, so the loop is seamless.
+    NumberAnimation on spin {
+        from: 0; to: 360
+        duration: root.spinMs
+        loops: Animation.Infinite
+        running: root.visible && root.animated
+        easing.type: Easing.Linear
+    }
+
+    // One diagonal shade sweep per appearance / selection change, repeating on the shade interval.
     SequentialAnimation {
-        id: cycle
+        id: shadeCycle
         loops: root.shadeRepeatMs > 0 ? Animation.Infinite : 1
         ParallelAnimation {
-            NumberAnimation { target: root; property: "reveal"; from: -root.ringSoft; to: 1; duration: root.ringRevealMs; easing.type: Easing.InOutSine }
             NumberAnimation { target: root; property: "wave"; from: -root.shadeSoft; to: 1 + root.shadeSoft; duration: Math.max(1, root.shadeUpMs + root.shadeHoldMs + root.shadeDownMs); easing.type: Easing.Linear }
             SequentialAnimation {
                 NumberAnimation { target: root; property: "pulse"; to: 1; duration: root.shadeUpMs; easing.type: Easing.OutCubic }
@@ -76,28 +86,42 @@ Item {
             }
         }
         PauseAnimation { duration: Math.max(1, root.shadeRepeatMs) }
-        NumberAnimation { target: root; property: "ringOpacity"; to: root.shadeRepeatMs > 0 ? 0 : 1; duration: root.ringOutMs }
-        ScriptAction { script: { if (root.shadeRepeatMs > 0) { root.reveal = -root.ringSoft; root.ringOpacity = 1; } } }
     }
 
-    // the ring: a big rounded rectangle with a smaller one cut out (odd-even fill), filled with a gradient that
-    // runs left -> right; the gradient's reveal front moves from the left edge to the right edge
+    // the ring: a big rounded rectangle with a smaller one cut out (odd-even fill). The fill is a
+    // conical gradient whose angle slowly turns, so a soft bright band travels around the ring.
     Shape {
         id: ringShape
         anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
-        opacity: root.ringOpacity
 
         ShapePath {
             strokeWidth: -1
             fillRule: ShapePath.OddEvenFill
-            fillGradient: LinearGradient {
-                x1: ringShape.width; y1: 0
-                x2: 0; y2: 0
-                GradientStop { position: 0.0;      color: Qt.rgba(1, 1, 1, 0.60) }
-                GradientStop { position: root.rA;  color: Qt.rgba(1, 1, 1, 0.60 + 0.38 * root.rA) }
-                GradientStop { position: root.rB;  color: Qt.rgba(1, 1, 1, 0) }
-                GradientStop { position: 1.0;      color: Qt.rgba(1, 1, 1, 0) }
+            fillGradient: ConicalGradient {
+                centerX: ringShape.width / 2
+                centerY: ringShape.height / 2
+                angle: root.spin
+                GradientStop { position: 0.00; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.00)) }
+                GradientStop { position: 0.05; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.05)) }
+                GradientStop { position: 0.10; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.10)) }
+                GradientStop { position: 0.13; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.13)) }
+                GradientStop { position: 0.16; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.16)) }
+                GradientStop { position: 0.18; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.18)) }
+                GradientStop { position: 0.20; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.20)) }
+                GradientStop { position: 0.22; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.22)) }
+                GradientStop { position: 0.24; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.24)) }
+                GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.25)) }
+                GradientStop { position: 0.75; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.75)) }
+                GradientStop { position: 0.76; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.76)) }
+                GradientStop { position: 0.78; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.78)) }
+                GradientStop { position: 0.80; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.80)) }
+                GradientStop { position: 0.82; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.82)) }
+                GradientStop { position: 0.84; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.84)) }
+                GradientStop { position: 0.87; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.87)) }
+                GradientStop { position: 0.90; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.90)) }
+                GradientStop { position: 0.95; color: Qt.rgba(1, 1, 1, root.ringAlpha(0.95)) }
+                GradientStop { position: 1.00; color: Qt.rgba(1, 1, 1, root.ringAlpha(1.00)) }
             }
             // outer edge
             startX: root.outerR; startY: 0

@@ -507,7 +507,7 @@ Item {
         readonly property bool scrollSettled: (root.focusIdx < 6 && Math.abs(root.scrollY) < 0.01)
             || (root.focusIdx >= 6 && Math.abs(root.scrollY - root.row2Scroll) < 0.01)
         Behavior on x { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
-        Behavior on y { enabled: root.lift > 0.6 && scrollSettled; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+        Behavior on y { enabled: root.lift > 0.6 && cardRing.scrollSettled; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
         Behavior on width { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
         Behavior on height { enabled: root.lift > 0.6; NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
     }
