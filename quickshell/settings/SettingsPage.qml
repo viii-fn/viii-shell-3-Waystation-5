@@ -67,7 +67,7 @@ FocusScope {
     // ---- geometry: a real list, centred horizontally, starting at the top (viii-vlist2) ----
     readonly property real padX: Math.round(width * 0.10)
     readonly property real innerW: width - 2 * padX
-    readonly property real listW: Math.min(620, innerW)
+    readonly property real listW: Math.min(920, innerW)
     readonly property real listX: Math.round((width - listW) / 2)
     readonly property real rowH: 72
     readonly property real listTop: 112
