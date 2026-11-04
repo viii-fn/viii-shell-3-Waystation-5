@@ -16,6 +16,8 @@ Item {
     // darkness of the wallpaper dim layer; Settings raises this so its content stays legible
     property real dim: 0.28
     Behavior on dim { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+    // bottom scrim; Settings turns it off so the whole wallpaper is dimmed evenly
+    property bool scrim: true
 
     Rectangle {
         anchors.fill: parent
@@ -146,6 +148,9 @@ Item {
 
     // bottom scrim keeps the info area readable
     Rectangle {
+        opacity: root.scrim ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: parent.height * 0.5
         gradient: Gradient {

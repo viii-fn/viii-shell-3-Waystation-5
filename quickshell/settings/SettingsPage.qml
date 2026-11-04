@@ -10,7 +10,7 @@ import "../hub"
 // PS5-inspired settings surface.
 //
 // Two layers share the same focus:
-//   * pane 0: every category as a centred glass tile in a 3 x 4 grid;
+//   * pane 0: every category as one row of a centred vertical list;
 //   * pane 1: the reusable SettingsMenu (30% item list / 70% control) for the chosen category.
 // The transition between them is a fade + zoom. The wallpaper is never covered by a scrim:
 // Hub.qml keeps Backdrop.wallpaper on while settings is open, so the current wallpaper is
@@ -64,18 +64,41 @@ FocusScope {
     property int briTarget: -1
     property int briSent: -1
 
-    // ---- geometry (10% horizontal padding on each side) ----
+    // ---- geometry: a real list, centred horizontally, starting at the top (viii-vlist2) ----
     readonly property real padX: Math.round(width * 0.10)
     readonly property real innerW: width - 2 * padX
-    readonly property real gridGap: 20
-    readonly property real tileW: Math.floor((innerW - 2 * gridGap) / 3)
-    readonly property real tileH: 94
-    readonly property real gridGapY: 18
-    readonly property real gridX: padX + Math.round((innerW - (3 * tileW + 2 * gridGap)) / 2)
-    readonly property real gridH: 4 * tileH + 3 * gridGapY
-    readonly property real gridY: Math.round((height - gridH) / 2)
-    function tileX(i) { return gridX + (i % 3) * (tileW + gridGap); }
-    function tileY(i) { return gridY + Math.floor(i / 3) * (tileH + gridGapY); }
+    readonly property real listW: Math.min(620, innerW)
+    readonly property real listX: Math.round((width - listW) / 2)
+    readonly property real rowH: 72
+    readonly property real listTop: 112
+    readonly property real listBottom: height - 36
+    readonly property real viewH: listBottom - listTop
+    // The list only scrolls when the highlighted row would leave the visible area.
+    // scrollGoal is where it should end up; scrollY and selPos glide there together (same
+    // curve and duration) so the ring and the rows never drift apart while moving.
+    property real scrollGoal: 0
+    property real scrollY: scrollGoal
+    property real selPos: categoryIndex
+    Behavior on scrollY {
+        enabled: root.active
+        NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+    }
+    Behavior on selPos {
+        enabled: root.active
+        NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+    }
+    function rowTop(i) { return listTop + i * rowH - scrollY; }
+    // rows fade out as they slide under the top edge / past the bottom edge of the list area
+    function rowFade(top) {
+        return Math.max(0, Math.min(1, (top - listTop + rowH) / rowH, (listBottom - top) / rowH));
+    }
+    function ensureVisible() {
+        const top = categoryIndex * rowH;
+        let goal = scrollGoal;
+        if (top < goal) goal = top;
+        else if (top + rowH > goal + viewH) goal = top + rowH - viewH;
+        scrollGoal = Math.max(0, Math.min(Math.max(0, categories.length * rowH - viewH), goal));
+    }
 
     readonly property var categories: [
         { title: "System", icon: "", description: "System software, power and device information" },
@@ -398,11 +421,8 @@ FocusScope {
     }
 
     function moveGrid(dx, dy) {
-        let col = categoryIndex % 3;
-        let row = Math.floor(categoryIndex / 3);
-        col = Math.max(0, Math.min(2, col + dx));
-        row = Math.max(0, Math.min(3, row + dy));
-        categoryIndex = row * 3 + col;
+        // vertical list: only up / down move the highlight (dx is ignored)
+        categoryIndex = Math.max(0, Math.min(categories.length - 1, categoryIndex + dy));
         armed = "";
     }
 
@@ -818,6 +838,8 @@ FocusScope {
             horizontalAlignment: Text.AlignRight
         }
 
+        // A real list: rows keep their place, the ring moves to the highlighted row and the
+        // list scrolls only when it has to. Per frame only y / opacity change.
         Repeater {
             model: root.categories
 
@@ -827,61 +849,95 @@ FocusScope {
                 required property int index
 
                 readonly property bool selected: root.categoryIndex === index
+                readonly property real rowTopY: root.rowTop(index)
 
-                x: root.tileX(index)
-                y: root.tileY(index)
-                width: root.tileW
-                height: root.tileH
+                x: root.listX
+                y: rowTopY
+                width: root.listW
+                height: root.rowH
+                opacity: root.rowFade(rowTopY)
+                visible: opacity > 0.02
 
                 Text {
-                    x: 28
+                    x: 30
                     anchors.verticalCenter: parent.verticalCenter
                     text: tile.modelData.icon
                     font.family: Theme.iconFont
-                    font.pixelSize: 26
+                    font.pixelSize: 28
                     color: tile.selected ? Theme.fg : Theme.fgDim
                     Behavior on color { ColorAnimation { duration: 180 } }
                 }
 
-                SettingsText {
-                    x: 76
+                Column {
+                    x: 90
+                    width: parent.width - 90 - 28
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(0, tile.width - 100)
-                    text: tile.modelData.title
-                    font.pixelSize: 18
-                    font.weight: tile.selected ? Font.DemiBold : Font.Medium
-                    color: tile.selected ? Theme.fg : Theme.fgDim
-                    Behavior on color { ColorAnimation { duration: 180 } }
+                    spacing: 5
+
+                    SettingsText {
+                        width: parent.width
+                        text: tile.modelData.title
+                        font.pixelSize: 20
+                        font.weight: tile.selected ? Font.DemiBold : Font.Medium
+                        color: tile.selected ? Theme.fg : Theme.fgDim
+                        Behavior on color { ColorAnimation { duration: 180 } }
+                    }
+                    SettingsText {
+                        width: parent.width
+                        text: tile.modelData.description
+                        font.pixelSize: 13
+                        color: tile.selected ? Theme.fgDim : Qt.alpha(Theme.fg, 0.38)
+                        Behavior on color { ColorAnimation { duration: 180 } }
+                    }
+                }
+
+                // very faint separator under every row except the last
+                Rectangle {
+                    visible: tile.index < root.categories.length - 1
+                    x: 0
+                    y: parent.height - 1
+                    width: parent.width
+                    height: 1
+                    color: Qt.alpha(Theme.fg, 0.07)
                 }
 
                 MouseArea {
-                    id: tileArea
                     anchors.fill: parent
-                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.openCategory(tile.index)
                 }
             }
         }
 
-        // One ring glides between the category tiles. Same ring, same overlay shade as everywhere.
+        // keep the highlighted row inside the visible area
+        Connections {
+            target: root
+            function onCategoryIndexChanged() { root.ensureVisible(); }
+        }
+
+        // The same ring and overlay shade as everywhere; it glides from row to row.
         GlassRing {
             readonly property real out: 3.5
-            x: root.tileX(root.categoryIndex) - out
-            y: root.tileY(root.categoryIndex) - out
-            width: root.tileW + 2 * out
-            height: root.tileH + 2 * out
+            x: root.listX - out
+            y: root.listTop + root.selPos * root.rowH - root.scrollY + 5 - out
+            width: root.listW + 2 * out
+            height: root.rowH - 10 + 2 * out
             radius: 3 + out
             thickness: 2.5
             shade: true
             trigger: root.categoryIndex
             animated: gridLayer.visible
             z: 3
-            Behavior on x {
-                NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-            }
-            Behavior on y {
-                NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
+        }
+
+        // mouse wheel / touchpad: one row per notch
+        WheelHandler {
+            property real acc: 0
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: event => {
+                acc += event.angleDelta.y;
+                while (acc >= 120) { acc -= 120; root.moveGrid(0, -1); }
+                while (acc <= -120) { acc += 120; root.moveGrid(0, 1); }
             }
         }
     }

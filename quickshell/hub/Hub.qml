@@ -325,7 +325,9 @@ PanelWindow {
             icon: win.iconUrl(win.sel)
             shown: win.shown
             wallpaper: win.settingsOpen || settings.reveal > 0.01 || (win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true))
-            dim: (win.settingsOpen || settings.reveal > 0.01) ? 0.45 : 0.28
+            // settings: the wallpaper is dimmed to about 45% brightness (0.55 black-ish overlay)
+            dim: (win.settingsOpen || settings.reveal > 0.01) ? 0.55 : 0.28
+            scrim: !(win.settingsOpen || settings.reveal > 0.01)
             news: !win.settingsOpen && settings.reveal < 0.01 && win.page === 0 && !!win.sel && win.sel.isExplore === true && home.newsSrc.toString() !== ""
             ghost: !win.settingsOpen && settings.reveal < 0.01
             newsImg: home.newsSrc
