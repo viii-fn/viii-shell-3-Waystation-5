@@ -696,29 +696,7 @@ Item {
         }
     }
 
-    // viii-cc-home: Home selected -> the Welcome cards (same grid as the hub's Welcome tile). Enter / click = hub root.
-    Loader { anchors.fill: parent; active: root.idx === 0; sourceComponent: homeComp }
-    Component {
-        id: homeComp
-        Item {
-            NumberAnimation on opacity { from: 0; to: 1; duration: 240 }
-
-            WelcomeGrid {
-                id: homeGrid
-                shown: true
-                x: root.padX
-                y: root.rowBottom - height + (1 - root.vis) * 40
-                opacity: root.vis
-            }
-            MouseArea {
-                x: homeGrid.x
-                y: homeGrid.y
-                width: homeGrid.width
-                height: homeGrid.height
-                onClicked: root.goHome()
-            }
-        }
-    }
+    // viii-cc-home-button: Home is only a button now; it has no pane of its own.
 
     Component {
         id: winRowComp
@@ -2089,17 +2067,30 @@ Item {
             y: root.stripY - height / 2 + (1 - root.vis) * 40
             opacity: root.vis
 
-            // viii-cc-strip-ring: the active icon sits in a plain white circle; the icon itself never zooms
+            // viii-cc-strip-ring: the active icon sits in a full white circle; the icon itself never zooms.
+            // Its glyph turns black so it stays readable on the white fill.
             Rectangle {
                 anchors.centerIn: parent
                 width: 48
                 height: 48
                 radius: 24
-                color: "transparent"
-                border.width: 2
-                border.color: Theme.fg
+                color: Theme.fg
                 opacity: it.cur ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            }
+
+            // viii-cc-strip-sel: the same glass selection ring as the hub tiles. It is only on the
+            // strip while the strip owns the focus; entering the pane's cards/widgets fades it off.
+            GlassRing {
+                anchors.centerIn: parent
+                width: 55
+                height: 55
+                radius: 27.5
+                thickness: 2.5
+                shade: false
+                opacity: it.cur && !root.inCards ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                visible: opacity > 0.01
             }
 
             // viii-cc-strip-plain: no tile on the selected icon, it is only brighter and circled
@@ -2122,7 +2113,9 @@ Item {
                 font.family: root.nfFamily !== "" ? root.nfFamily : Theme.fontFamily
                 font.pixelSize: root.nfFamily !== "" ? 26 : 12
                 font.weight: Font.Bold
+                color: it.cur ? Theme.deep : Theme.fg
                 opacity: (it.cur ? 1 : 0.38) * ((it.index === 6 && root.micMuted) ? 0.5 : 1)     // viii-cc-strip
+                Behavior on color { ColorAnimation { duration: 180 } }
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
             Rectangle {                                 // viii-cc-ws: number of workspaces that have windows

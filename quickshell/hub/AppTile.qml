@@ -12,6 +12,7 @@ Item {
     property real iconScale: 0.8
     property real iconOpacity: 1
     property real tileFade: 1            // 1 = whole tile visible, 0 = slot and icon completely faded out (other tiles while a page is open)
+    property real slotOpacity: 1         // extra fade for the glass slot only (the selected icon keeps its glyph in the bar)
     property real ring: 0                // 0..1: the PS5 selection ring around the tile (the home row drives it)
 
     readonly property bool isLib: entry !== null && entry !== undefined && entry.isLibrary === true
@@ -37,7 +38,7 @@ Item {
         anchors.fill: parent
         radius: root.corner
         alpha: 1
-        opacity: root.tileFade
+        opacity: root.tileFade * root.slotOpacity
     }
 
     // selection ring: always there, only visible while the tile is focused

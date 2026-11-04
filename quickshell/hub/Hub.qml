@@ -358,8 +358,8 @@ PanelWindow {
                 searchFocus: win.searchFocus
                 searchOpen: win.searchOpen
                 query: win.query
-                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal) * (1 - win.launchT) * (1 - 0.9 * home.c)   // viii-reflow
-                y: -12 * home.c
+                opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal) * (1 - win.launchT) * (1 - home.navT)   // viii-header
+                y: -12 * home.navT
                 visible: opacity > 0.01
                 onTabClicked: index => { win.page = index; win.tabsFocus = false; }
                 onSettingsClicked: win.openSettings()

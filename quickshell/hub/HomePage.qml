@@ -50,6 +50,15 @@ Item {
     property int wCard: 0                          // focused Welcome card: 0 Screen time, 1 Network, 2 Most used, 3 About, 4 Batteries, 5 Weather
     property real c: inContent ? 1 : 0             // 0 = tile focus, 1 = content focus (one number drives the whole reflow)
     Behavior on c { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+
+    // ---- viii-header: navigating inside a page (Welcome/app cards or Explore cards) lifts the
+    // selected tile's icon into the top-bar home slot and hides the bar completely. ----
+    readonly property bool inPage: inContent || inCards
+    property real navT: inPage ? 1 : 0
+    Behavior on navT { NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    readonly property real headX: 54               // where the top bar's left "Home" content starts
+    readonly property real headY: 38
+    readonly property real headS: 42               // icon size in the bar
     readonly property real zEff: zoom * (1 - c)    // the selected tile takes the small size while the content has focus
     readonly property real rowLift: 44             // tune: how far the tile row recedes upward (design px)
     readonly property real rowDim: 0.30            // tune: how much the whole row dims (0..1)
@@ -252,14 +261,16 @@ Item {
             readonly property real w: root.wOf(index)
             readonly property real t: root.stage(index)
             readonly property real k: root.tent(index) * root.zEff      // 0 until the zoom (and while the content has focus): no ring, no raised tile, dimmed
+            readonly property bool sel: index === root.current
+            readonly property real nt: sel ? root.navT : 0              // the selected tile alone flies up to the bar
 
-            x: root.xOf(index) + (1 - t) * 454
-            y: root.rowTop + (1 - k) * 4 + (1 - t) * 26 - root.rowLift * root.c
-            width: w
-            height: w
-            z: k
+            x: (root.xOf(index) + (1 - t) * 454) * (1 - nt) + root.headX * nt
+            y: (root.rowTop + (1 - k) * 4 + (1 - t) * 26 - root.rowLift * root.navT) * (1 - nt) + root.headY * nt
+            width: w * (1 - nt) + root.headS * nt
+            height: width
+            z: k + (sel ? root.navT * 20 : 0)
             // tiles you have scrolled past stay where they are (dimmed); they only melt away as they leave the left edge
-            opacity: t * Math.min(1, Math.max(0, (x + width) / 40)) * (1 - root.rowDim * root.c)
+            opacity: t * Math.min(1, Math.max(0, (x + width) / 40)) * (sel ? 1 : (1 - root.rowDim * root.navT))
             visible: x < root.width + 10 && x + width > 0 && opacity > 0.01
 
             AppTile {
@@ -267,7 +278,8 @@ Item {
                 entry: cell.modelData
                 dim: 1 - cell.k
                 // While a tile's page is open, every tile except the selected one is fully faded out (slot + icon).
-                tileFade: cell.index === root.current ? 1 : 1 - root.c
+                tileFade: cell.sel ? 1 : 1 - root.navT
+                slotOpacity: cell.sel ? 1 - root.navT : 1
                 ring: 0          // viii-ring-v2: the single floating ring below draws the selection
             }
             MouseArea {
@@ -294,7 +306,7 @@ Item {
         Behavior on focT { NumberAnimation { duration: 180 } }
 
         x: tx + (1 - st) * 454 - out
-        y: root.rowTop + (1 - root.zoom) * 4 + (1 - st) * 26 - out - root.rowLift * root.c
+        y: root.rowTop + (1 - root.zoom) * 4 + (1 - st) * 26 - out - root.rowLift * root.navT
         width: tw + 2 * out
         height: width
         radius: tw * 0.14 + out
@@ -306,10 +318,13 @@ Item {
         visible: root.entries.length > 0 && opacity > 0.01 && x < root.width + 10
     }
 
-    // ---- the PS5 label: name under the small tiles, right of the focused tile ----
+    // ---- the PS5 label: name under the small tiles, right of the focused tile; on in-page
+    // navigation it follows the selected icon up into the bar ----
     Txt {
-        x: root.padL + (root.sel + root.selMargin + 10) * (1 - root.c) + (root.small + 12) * root.c
-        y: root.rowTop + 4 + root.small + 12 - root.rowLift * root.c
+        readonly property real baseX: root.padL + (root.sel + root.selMargin + 10) * (1 - root.c) + (root.small + 12) * root.c
+        readonly property real baseY: root.rowTop + 4 + root.small + 12 - root.rowLift * root.navT
+        x: baseX * (1 - root.navT) + (root.headX + root.headS + 16) * root.navT
+        y: baseY * (1 - root.navT) + (root.headY + 4) * root.navT
         width: 700
         text: root.cur ? root.cur.name : ""
         font.pixelSize: 24
