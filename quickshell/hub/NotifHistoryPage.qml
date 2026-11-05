@@ -181,7 +181,10 @@ Item {
             width: 1246
             height: 530
             clip: true
-            model: root.items
+            // Only build history rows while the page is visible. The list would otherwise
+            // create its first screenful (and resolve their icons) at shell startup.
+            model: root.visible ? root.items : 0
+            cacheBuffer: root.visible ? 240 : 0
             keyNavigationEnabled: false
             boundsBehavior: Flickable.StopAtBounds
 
@@ -328,7 +331,7 @@ Item {
                     height: card.height + 9
                     radius: 24.5
                     opacity: row.selT
-                    visible: opacity > 0.01
+                    visible: root.visible && opacity > 0.01
                 }
 
                 MouseArea {

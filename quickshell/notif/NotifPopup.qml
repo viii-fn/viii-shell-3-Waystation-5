@@ -31,6 +31,9 @@ PanelWindow {
     readonly property bool urgent: !!e && e.urgency === 2
 
     property real vis: on ? 1 : 0
+    // Unmap the layer surface while nothing is showing. The card itself is transparent
+    // then, but an always-mapped overlay window still costs the compositor a pass.
+    visible: on || vis > 0.002
     Behavior on vis {
         NumberAnimation {
             duration: win.on ? 460 : 300

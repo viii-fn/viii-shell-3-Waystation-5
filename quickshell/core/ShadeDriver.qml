@@ -17,5 +17,6 @@ Item {
         loops: Animation.Infinite
         easing.type: Easing.Linear
         running: true
+        paused: Shade.users === 0
     }
 }

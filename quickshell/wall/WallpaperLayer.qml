@@ -15,30 +15,51 @@ PanelWindow {
     WlrLayershell.namespace: "viii-wall"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
+    // Decode at the real screen width. A 1920px decode on a 1366px panel is 2.3x the
+    // texture memory for no visible gain (this machine has 1.8 GB of RAM).
+    readonly property int texW: win.screen && win.screen.width > 0 ? win.screen.width : 1366
+
     Image {
         id: back
         anchors.fill: parent
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        sourceSize.width: 1920
-        onStatusChanged: { if (status === Image.Ready && front.opacity > 0.99) front.opacity = 0; }
+        sourceSize.width: win.texW
+        onStatusChanged: {
+            if (status === Image.Ready && front.opacity > 0.99) {
+                front.opacity = 0;
+                front.source = "";      // back holds this frame now: drop the duplicate texture
+            }
+        }
     }
     Image {
         id: front
         anchors.fill: parent
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        sourceSize.width: 1920
+        sourceSize.width: win.texW
         opacity: 0
-        onStatusChanged: { if (status === Image.Ready && source !== back.source) fade.restart(); }
+        onStatusChanged: {
+            if (status !== Image.Ready) return;
+            if (source === back.source) {
+                // re-applied the same image: nothing to cross-fade, so release the duplicate
+                if (opacity < 0.01) front.source = "";
+                return;
+            }
+            fade.restart();
+        }
     }
     SequentialAnimation {
         id: fade
         NumberAnimation { target: front; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.InOutQuad }
         ScriptAction {
             script: {
-                if (back.source === front.source && back.status === Image.Ready) front.opacity = 0;
-                else back.source = front.source;
+                if (back.source === front.source && back.status === Image.Ready) {
+                    front.opacity = 0;
+                    front.source = "";
+                } else {
+                    back.source = front.source;
+                }
             }
         }
     }

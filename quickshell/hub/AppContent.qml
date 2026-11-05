@@ -40,9 +40,10 @@ Item {
     property real nowSec: Date.now() / 1000
 
     // ======================= screen time =======================
-    readonly property real today: { void ScreenTime.revision; return entry ? ScreenTime.sum(entry, 1) : 0; }
-    readonly property real week: { void ScreenTime.revision; return entry ? ScreenTime.sum(entry, 7) : 0; }
+    readonly property real today: { if (!root.active) return 0; void ScreenTime.revision; return entry ? ScreenTime.sum(entry, 1) : 0; }
+    readonly property real week: { if (!root.active) return 0; void ScreenTime.revision; return entry ? ScreenTime.sum(entry, 7) : 0; }
     readonly property var series: {
+        if (!root.active) return [];
         void ScreenTime.revision;
         const out = [];
         if (!entry) return out;
@@ -291,7 +292,7 @@ Item {
         z: 4
         trigger: root.focusIdx
         opacity: root.focusIdx >= 0 ? 1 : 0
-        visible: opacity > 0.01
+        visible: root.visible && opacity > 0.01
         Behavior on x { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
         Behavior on y { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
         Behavior on width { NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }

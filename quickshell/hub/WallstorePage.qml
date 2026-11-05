@@ -184,9 +184,13 @@ Item {
             width: root.cols * 302
             height: 520
             clip: true
-            model: root.items
+            // A hidden GridView still builds its first rows and starts decoding their
+            // thumbnails. Wallstore is closed most of the time, so keep the model empty
+            // until the page is on screen (the fade-out keeps visible true until it is gone).
+            model: root.visible ? root.items : 0
             cellWidth: 302
             cellHeight: 192
+            cacheBuffer: root.visible ? 360 : 0
             keyNavigationEnabled: false
             boundsBehavior: Flickable.StopAtBounds
 

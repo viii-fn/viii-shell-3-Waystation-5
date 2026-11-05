@@ -123,7 +123,7 @@ Item {
             thickness: 2.5
             trigger: root.current
             opacity: ringHost.focT
-            visible: opacity > 0.01
+            visible: root.visible && opacity > 0.01
         }
     }
 
@@ -137,10 +137,13 @@ Item {
         interactive: false
         keyNavigationEnabled: false
         highlightFollowsCurrentItem: false
-        cacheBuffer: 360
+        cacheBuffer: root.visible ? 360 : 0
         cellWidth: root.cellW
         cellHeight: root.cellH
-        model: root.entries
+        // A hidden GridView still builds its first rows (and decodes their icons). Keep the
+        // model empty until the page is actually on screen; the fade-out keeps visible true
+        // until it is gone, so delegates are not pulled out from under the animation.
+        model: root.visible ? root.entries : 0
         currentIndex: root.current
 
         delegate: Item {

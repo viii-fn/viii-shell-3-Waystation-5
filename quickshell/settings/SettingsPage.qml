@@ -1171,7 +1171,7 @@ FocusScope {
             thickness: 2.5
             shade: true
             trigger: root.categoryIndex
-            animated: gridLayer.visible
+            animated: gridLayer.visible && root.visible
             z: 3
         }
 
@@ -1256,7 +1256,7 @@ FocusScope {
                 RotationAnimator on rotation {
                     from: 0; to: 360; duration: 900
                     loops: Animation.Infinite
-                    running: root.statusKindShown === "loading" && pill.visible
+                    running: root.visible && root.statusKindShown === "loading" && pill.visible
                 }
             }
             SettingsText {

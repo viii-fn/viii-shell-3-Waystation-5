@@ -100,7 +100,34 @@ Singleton {
     }
 
     // ---- workspaces ----
-    function refresh() { wsProc.running = true; }
+    // Hyprland's models already carry the active workspace and its toplevel list, so a
+    // window opening/closing is one model update instead of two `hyprctl` processes.
+    // The process path below is only the first snapshot, used while the models are still
+    // empty during shell startup (and as a fallback if they are unavailable).
+    function computeEmpty() {
+        const next = {};
+        const monitors = Hyprland.monitors.values;
+        for (let i = 0; i < monitors.length; i++) {
+            const m = monitors[i];
+            const ws = m.activeWorkspace;
+            const ipc = m.lastIpcObject;
+            const special = ipc && ipc.specialWorkspace && ipc.specialWorkspace.name !== "";
+            const top = ws && ws.toplevels ? ws.toplevels.values : null;
+            next[m.name] = !special && (!ws || (top ? top.length === 0 : false));
+        }
+        return next;
+    }
+
+    readonly property var modelEmpty: computeEmpty()
+    onModelEmptyChanged: publish(modelEmpty)
+
+    function publish(next) {
+        // publish only when something changed, otherwise every listener (hub visibility,
+        // backdrop, ...) re-evaluates for nothing
+        const keys = Object.keys(next);
+        if (keys.length === Object.keys(empty).length && keys.every(k => empty[k] === next[k])) return;
+        empty = next;
+    }
 
     function apply(workspaces, monitors) {
         const next = {};
@@ -111,7 +138,16 @@ Singleton {
             const special = m.specialWorkspace && m.specialWorkspace.name !== "";
             next[m.name] = !special && (!ws || ws.windows === 0);
         }
-        empty = next;
+        publish(next);
+    }
+
+    function refresh() {
+        if (Hyprland.monitors.values.length === 0) {
+            // startup: the models have not received their first snapshot yet
+            if (!wsProc.running) wsProc.running = true;
+            return;
+        }
+        publish(computeEmpty());
     }
 
     property var wsCache: []

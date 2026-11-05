@@ -17,18 +17,35 @@ PanelWindow {
     WlrLayershell.namespace: "viii-hub"
     WlrLayershell.keyboardFocus: (win.shown && win.isFocusedMon) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-    readonly property bool shown: Desk.isEmpty(screen.name) || Desk.summoned
+    // Computed explicitly, not as an inline binding: `screen` is assigned while the layer
+    // surface maps, which made the direct binding re-enter itself (binding-loop warning).
+    property bool shown: false
+    property bool emptyDesk: false
+    function syncShown() {
+        const n = win.screen ? win.screen.name : "";
+        const empty = Desk.isEmpty(n);
+        win.emptyDesk = empty;
+        win.shown = empty || Desk.summoned;
+    }
+    onScreenChanged: syncShown()
     readonly property var fm: Hyprland.focusedMonitor
     readonly property bool isFocusedMon: fm ? fm.name === screen.name : true
 
     property real vis: shown ? 1 : 0
     Behavior on vis {
+        enabled: win.booted
         NumberAnimation {
             duration: win.shown ? Motion.reveal : Motion.hide
             easing.type: Easing.BezierSpline
             easing.bezierCurve: win.shown ? Motion.out : Motion.inOut
         }
     }
+    // false only during Component.onCompleted, so the first shown state snaps in
+    // instead of fading the whole hub in on every shell start
+    property bool booted: false
+    // false until the window is fully built; guards the shown handler against Desk
+    // signals that can arrive while the component is still being created
+    property bool ready: false
     visible: shown || vis > 0.002
 
     // ---- state ----
@@ -117,6 +134,8 @@ PanelWindow {
     Connections {
         target: Desk
         function onLibraryRequested() { win.page = 1; win.tabsFocus = false; }
+        function onEmptyChanged() { win.syncShown(); }
+        function onSummonedChanged() { win.syncShown(); }
         function onHubRequested() {      // viii-hub-root: back to the root page, whatever was open
             win.historyOpen = false;
             win.storeOpen = false;
@@ -137,35 +156,38 @@ PanelWindow {
     }
 
     onShownChanged: {
-        if (shown) {
-            resetTimer.stop();
-            bellFocus = false;
-            historyOpen = false;
-            gearFocus = false;
-            rebuild();
-            page = 0;
-            tabsFocus = false;
-            settingsOpen = false;
-            launching = false;
-            fx.reset();
-            intro = 0;
-            introAnim.restart();
-            warm.restart();
-            root.forceActiveFocus();
-            tint();
-        } else {
+        if (!ready) return;
+        if (shown) initShown();
+        else {
             Theme.applyWallpaper();
             resetTimer.restart();
         }
     }
 
+    function initShown() {
+        resetTimer.stop();
+        bellFocus = false;
+        historyOpen = false;
+        gearFocus = false;
+        rebuild();
+        page = 0;
+        tabsFocus = false;
+        settingsOpen = false;
+        launching = false;
+        fx.reset();
+        intro = 0;
+        introAnim.restart();
+        warm.restart();
+        root.forceActiveFocus();
+        tint();
+    }
+
     Component.onCompleted: {
-        if (shown) {
-            rebuild();
-            introAnim.restart();
-            warm.restart();
-            tint();
-        }
+        ready = true;
+        const was = shown;
+        syncShown();
+        if (shown && shown === was) initShown();   // syncShown changed nothing, so no signal ran
+        booted = true;
         Apps.visible();
         retry.start();
     }
@@ -186,7 +208,7 @@ PanelWindow {
     Timer {
         id: warm
         interval: 2600
-        onTriggered: { for (let i = 0; i < home.entries.length; i++) Apps.request(home.entries[i]); }
+        onTriggered: { if (win.shown) for (let i = 0; i < home.entries.length; i++) Apps.request(home.entries[i]); }
     }
     Timer {
         id: resetTimer
@@ -325,6 +347,7 @@ PanelWindow {
             icon: win.iconUrl(win.sel)
             shown: win.shown
             wallpaper: win.settingsOpen || settings.reveal > 0.01 || (win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true))
+            baseBehind: win.emptyDesk
             // settings: the wallpaper is dimmed to about 45% brightness (0.55 black-ish overlay)
             dim: (win.settingsOpen || settings.reveal > 0.01) ? 0.55 : 0.28
             scrim: !(win.settingsOpen || settings.reveal > 0.01)

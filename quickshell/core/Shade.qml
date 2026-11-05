@@ -14,6 +14,11 @@ Singleton {
     // 0..1 across one complete cycle (sweep + pause)
     property real phase: 0
 
+    // How many rings currently need the sweep. GlassRing claims a slot only while it is
+    // actually on screen; ShadeDriver stops the clock when this reaches zero, so a hidden
+    // hub (a workspace with windows) does not keep a 60 fps animation alive all day.
+    property int users: 0
+
     // design values
     readonly property int upMs: 10              // shade 0 -> peak
     readonly property int holdMs: 4             // shade stays at its peak

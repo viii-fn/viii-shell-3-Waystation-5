@@ -1,5 +1,6 @@
 // viii-ring-v8
 import QtQuick
+import QtQuick.Window
 import QtQuick.Shapes
 import "../core"
 
@@ -26,9 +27,26 @@ Item {
     property real spin: 0               // angle of the conical ring gradient
     // Shade state comes from the shared clock, so every ring is in phase and no ring
     // owns a timer. Rings that are hidden or not animated add no work.
-    readonly property bool shadeActive: visible && animated && shade
+    // The window check matters: a page can still say visible = true while its layer
+    // surface is unmapped (window on a workspace with windows), and then nothing it
+    // draws can be seen. A layer window that has never been mapped has no Window at all,
+    // which is exactly the startup case where the hub is hidden over normal windows.
+    readonly property bool onScreen: !!Window.window && Window.window.visible
+    readonly property bool shadeActive: onScreen && visible && animated && shade
     readonly property real pulse: shadeActive ? Shade.pulse : 0
     readonly property real wave: shadeActive ? (Shade.band * (1 + 2 * shadeSoft) - shadeSoft) : -shadeSoft
+
+    // Tell ShadeDriver whether the shared sweep is needed. A plain count keeps the
+    // driver alive while any ring is on screen and stops it as soon as the last one goes.
+    property bool shadeClaimed: false
+    function syncShadeClaim() {
+        if (shadeClaimed === shadeActive) return;
+        shadeClaimed = shadeActive;
+        Shade.users += shadeActive ? 1 : -1;
+    }
+    onShadeActiveChanged: syncShadeClaim()
+    Component.onCompleted: syncShadeClaim()
+    Component.onDestruction: if (shadeClaimed) Shade.users -= 1
 
     readonly property real outerR: Math.max(0, Math.min(radius, Math.min(width, height) / 2))
     readonly property real th: thickness
@@ -59,11 +77,14 @@ Item {
     function halt() {}
 
     // The highlight orbits forever. 360 degrees looks the same as 0, so the loop is seamless.
+    // Paused (not stopped) while the window is unmapped, so it resumes exactly where it was
+    // instead of snapping back to the same angle every time the hub reopens.
     NumberAnimation on spin {
         from: 0; to: 360
         duration: root.spinMs
         loops: Animation.Infinite
-        running: root.visible && root.animated
+        running: true
+        paused: !root.onScreen || !root.visible || !root.animated
         easing.type: Easing.Linear
     }
 

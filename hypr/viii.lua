@@ -33,10 +33,12 @@ try("autostart viii", hl.on, "hyprland.start", function()
 end)
 
 ---------------------------------------------------------------------------
--- The shell draws its own animations, so Hyprland must not animate its layer surfaces.
+-- The shell draws its own animations, so Hyprland must not animate its layer
+-- surfaces. blur = false is explicit: these layers are not blurred (the compositor
+-- would otherwise run a full-screen blur pass behind them).
 ---------------------------------------------------------------------------
-for _, ns in ipairs({ "viii-hub", "viii-cc", "viii-osd" }) do
-    try("layer no_anim " .. ns, hl.layer_rule, { match = { namespace = ns }, no_anim = true })
+for _, ns in ipairs({ "viii-hub", "viii-cc", "viii-osd", "viii-wall", "viii-notif", "viii-shot" }) do
+    try("layer rules " .. ns, hl.layer_rule, { match = { namespace = ns }, no_anim = true, blur = false })
 end
 
 ---------------------------------------------------------------------------

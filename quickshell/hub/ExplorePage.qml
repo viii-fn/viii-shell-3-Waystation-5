@@ -197,7 +197,7 @@ Item {
                     height: 20
                     radius: 10
                     opacity: card.kk
-                    visible: opacity > 0.01
+                    visible: root.visible && opacity > 0.01
                     color: Qt.rgba(1, 1, 1, 0.92)
                     Txt {
                         id: act
@@ -239,7 +239,7 @@ Item {
                     radius: 6 + out
                     thickness: 2.5
                     opacity: card.kk
-                    visible: opacity > 0.01
+                    visible: root.visible && opacity > 0.01
                 }
 
                 MouseArea {
@@ -333,7 +333,7 @@ Item {
                         radius: 23 + out
                         thickness: 2.5
                         opacity: btn.bk
-                        visible: opacity > 0.01
+                        visible: root.visible && opacity > 0.01
                     }
                     Txt {
                         anchors.centerIn: parent

@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
-import Quickshell.Io
+import Quickshell.Services.Pipewire
 import "../core"
 import "../hub"
 
@@ -71,60 +71,35 @@ PanelWindow {
         }
     }
 
-    // ---- volume: listen with `pactl subscribe`, read with `wpctl` ----
-    property bool armed: false          // ignore the first read after (re)start
+    // ---- volume: straight from PipeWire (event-driven, no process and no polling) ----
+    // Settings and the Control Center already write through this service, so every source
+    // (keys, sliders, other apps) updates the same value and the pop-up reacts to it.
+    property bool primed: false         // the first value is the current state, not a change
     property int lastVol: -1
     property bool lastMuted: false
-    property int backoff: 3000
-    Timer { running: true; interval: 2500; onTriggered: win.armed = true }
-    Timer { id: rearm; interval: 1500; onTriggered: win.armed = true }
 
-    Process {
-        id: sub
-        running: true
-        command: ["pactl", "subscribe"]
-        stdout: SplitParser {
-            onRead: line => {
-                win.backoff = 3000;
-                if (/on sink #/.test(line)) readTimer.restart();
-            }
-        }
-        // PipeWire restarted (or was not up yet): start the watcher again, slowly if it keeps failing
-        onExited: { respawn.interval = win.backoff; respawn.restart(); }
-    }
-    Timer {
-        id: respawn
-        onTriggered: {
-            win.backoff = Math.min(30000, win.backoff * 2);
-            win.armed = false;
-            rearm.restart();
-            sub.running = true;
-            readTimer.restart();
-        }
-    }
-    Timer { id: readTimer; interval: 60; onTriggered: { if (!getVol.running) getVol.running = true; } }
-    Timer { running: true; interval: 800; onTriggered: { if (!getVol.running) getVol.running = true; } }
+    readonly property var sinkNode: Pipewire.defaultAudioSink
+    readonly property var sinkAudio: win.sinkNode ? win.sinkNode.audio : null
+    readonly property real sinkVol: win.sinkAudio ? win.sinkAudio.volume : -1
+    readonly property bool sinkMuted: win.sinkAudio ? win.sinkAudio.muted : false
 
-    Process {
-        id: getVol
-        command: ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const m = /([0-9.]+)/.exec(this.text);
-                if (!m) return;
-                const v = Math.round(parseFloat(m[1]) * 100);
-                const mu = this.text.indexOf("MUTED") >= 0;
-                const changed = (v !== win.lastVol || mu !== win.lastMuted);
-                win.lastVol = v;
-                win.lastMuted = mu;
-                if (!changed || !win.armed || !win.isFocusedMon || Desk.ccOpen) return;
-                win.kind = "volume";
-                win.muted = mu;
-                win.value = v;
-                win.pop();
-            }
-        }
+    function volChanged() {
+        if (!win.sinkAudio) return;
+        const v = Math.round(Math.max(0, Math.min(1, win.sinkVol)) * 100);
+        const mu = win.sinkMuted;
+        const changed = (v !== win.lastVol || mu !== win.lastMuted);
+        win.lastVol = v;
+        win.lastMuted = mu;
+        if (!win.primed) { win.primed = true; return; }
+        if (!changed || !win.isFocusedMon || Desk.ccOpen) return;
+        win.kind = "volume";
+        win.muted = mu;
+        win.value = v;
+        win.pop();
     }
+    onSinkVolChanged: volChanged()
+    onSinkMutedChanged: volChanged()
+    onSinkAudioChanged: volChanged()
 
     Timer { id: hideTimer; interval: 1400; onTriggered: win.on = false }
 

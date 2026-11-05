@@ -153,6 +153,9 @@ Item {
     }
 
     readonly property real topSum: {
+        // only the visible home page shows this; hidden pages must not walk the whole
+        // app list every time ScreenTime bumps its revision, or while the hub is down
+        if (!root.visible || !root.shown) return 0;
         void ScreenTime.revision;
         let m = 0;
         for (let i = 0; i < entries.length; i++) {
@@ -315,7 +318,7 @@ Item {
         z: 3
         trigger: root.current
         opacity: st * root.zoom * focT * Math.min(1, Math.max(0, (tx + tw) / 40))
-        visible: root.entries.length > 0 && opacity > 0.01 && x < root.width + 10
+        visible: root.visible && root.entries.length > 0 && opacity > 0.01 && x < root.width + 10
     }
 
     // ---- the PS5 label: name under the small tiles, right of the focused tile; on in-page
