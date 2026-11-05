@@ -7,8 +7,10 @@ import "../core"
 // the top bar, the panes rise to HomePage.focusY and one GlassRing glides between them. There is no entry
 // step: no Open button, no separate page. Eight panes in different grid sizes, fitted to the visible screen:
 //
-//   explore   lead (wide, full row) | tall + small      wallpapers   tall + small | current (wide, full row)
-//   row 2     tall+small | small+tall | full row        row 2        full row | small+tall | tall + Browse all
+//   explore   lead (wide, full row) | tall + small      wallpapers   2 stacked | in use (square) | 2 stacked
+//   row 2     tall+small | small+tall | full row        row 2        three equal panes, the last one is "Browse all"
+//   viii-padfix: nothing is clipped. Panes fade by their own position like the Settings rows, the ring has room on
+//   every side, and the last row ends bottomPad above the screen edge.
 //
 // Row 2 peeks at the bottom edge at rest and is reached with Down; the grid scrolls so row 2 ends at the
 // bottom of the visible area (HomePage.focusY..768).
@@ -34,7 +36,9 @@ Item {
     readonly property real rowGap: 17
     readonly property real rowH: tall + rowGap + small            // 358
     readonly property real row2Y: rowH + 23                       // 381
-    readonly property real contentH: row2Y + rowH                 // 739
+    readonly property real row2H: isWall ? tall : rowH             // viii-padfix: the wallpaper grid's second row is the shorter one
+    readonly property real contentH: row2Y + row2H                 // explore 739, wallpapers 614
+    readonly property real bottomPad: 40                           // viii-padfix: space under the last row while the panes have focus
     readonly property real wide: 2 * colW + gutter                // 739
     readonly property real col1: colW + gutter                    // 381
     readonly property real col2: 2 * (colW + gutter)              // 762
@@ -44,16 +48,25 @@ Item {
     height: contentH
 
     // pane rectangles (design px, relative to the grid)
-    readonly property var gx: isWall ? [col1, 0, 0, 0, col1, col1, col2, col2] : [0, col2, col2, 0, 0, col1, col1, col2]
-    readonly property var gy: isWall ? [0, 0, tall + rowGap, row2Y, row2Y, row2Y + small + rowGap, row2Y, row2Y + tall + rowGap]
+    // wallpapers (viii-padfix): 0 = in use (centre square), 1/2 = left pair, 3/4 = right pair, 5/6 = two wide-ish panes, 7 = Browse all
+    // no pane is shorter than `half` (170), so a 16:9 wallpaper is never cropped to a thin strip
+    readonly property real half: 170
+    readonly property var gx: isWall ? [col1, 0, 0, col2, col2, 0, col1, col2] : [0, col2, col2, 0, 0, col1, col1, col2]
+    readonly property var gy: isWall ? [0, 0, rowH - half, 0, rowH - half, row2Y, row2Y, row2Y]
                                      : [0, 0, tall + rowGap, row2Y, row2Y + tall + rowGap, row2Y, row2Y + small + rowGap, row2Y]
-    readonly property var gw: [wide, colW, colW, colW, colW, colW, colW, colW]
-    readonly property var gh: isWall ? [rowH, tall, small, rowH, small, tall, tall, small]
+    readonly property var gw: isWall ? [colW, colW, colW, colW, colW, colW, colW, colW]
+                                     : [wide, colW, colW, colW, colW, colW, colW, colW]
+    readonly property var gh: isWall ? [rowH, half, half, half, half, tall, tall, tall]
                                      : [rowH, tall, small, tall, small, small, tall, rowH]
 
     function topOf(i) { return gy[i] - scrollY; }
+    // viii-padfix: the Settings fade. A pane whose top edge is at or below fadeFull (HomePage px) is fully visible and it is
+    // gone fadeLen higher up. Opacity only: no clip, no mask, no offscreen buffer.
+    readonly property real fadeFull: 100
+    readonly property real fadeLen: 80
+    function fadeAt(top) { return Math.max(0, Math.min(1, (root.y + top - (fadeFull - fadeLen)) / fadeLen)); }
     function rowOf(i) { return gy[i] >= row2Y ? 1 : 0; }
-    readonly property real row2Scroll: Math.max(0, contentH - viewH)
+    readonly property real row2Scroll: Math.max(0, contentH + bottomPad - viewH)
 
     // a pane exists when there is something to show in it
     function valid(i) {
@@ -122,18 +135,20 @@ Item {
     readonly property string pillB: isWall ? (Wall.busy ? "Applying\u2026" : (Wall.error !== "" ? Wall.error : "Now \u00b7 " + Wall.name(Wall.current)))
                                            : (focusItem ? String(focusItem.source) + " \u00b7 " + News.ago(focusItem.ts) : "")
     Row {
-        x: 0; y: -36
+        x: 0; y: -36 - root.scrollY
         spacing: 10
+        opacity: Math.max(0, 1 - root.scrollY / 60)                // viii-padfix: leaves with the first row instead of hanging in mid air
+        visible: opacity > 0.01
         Pill { label: root.pillA }
         Pill { label: root.pillB; visible: label !== "" }
     }
 
-    // One clipped viewport keeps the scrolled-up row from sliding over the tile row above.
+    // viii-padfix: NOT clipped any more. The clip cut the scrolled-up row along a hard line at the top of the grid and
+    // cut the ring off at the left, right and bottom. Panes fade by position instead (fadeAt).
     Item {
         id: viewport
         width: root.width
         height: root.viewH
-        clip: true
 
         Repeater {
             model: root.active ? root.count : 0
@@ -145,6 +160,7 @@ Item {
                 readonly property bool browse: root.isWall && index === root.browseIdx
                 readonly property bool has: it !== null || wp !== "" || browse
                 readonly property bool placeholder: index === 0 && !has
+                readonly property bool ghost: root.isWall && !has && !placeholder   // viii-padfix: an empty wallpaper slot stays faintly visible
                 readonly property bool nowTag: wp !== "" && wp === Wall.current
                 readonly property bool sel: index === root.focusIdx
                 readonly property real cw: root.gw[index]
@@ -161,7 +177,8 @@ Item {
                 y: root.topOf(index)
                 width: cw
                 height: ch
-                visible: (has || placeholder) && y + height > -2 && y < root.viewH + 2
+                opacity: root.fadeAt(y)                                     // viii-padfix
+                visible: (has || placeholder || ghost) && opacity > 0.01 && y < root.viewH + 2
 
                 // picture panes
                 Rectangle { anchors.fill: parent; visible: card.has && !card.browse; color: Qt.rgba(0.07, 0.078, 0.098, 1) }
@@ -188,18 +205,19 @@ Item {
                 Rectangle {
                     visible: card.has && !card.browse
                     anchors.fill: parent
-                    color: Qt.rgba(0, 0, 0, 0.30 * root.lift * (1 - card.kk))
+                    color: Qt.rgba(0, 0, 0, (root.isWall ? 0.22 : 0.30) * root.lift * (1 - card.kk))
                 }
                 Rectangle {
                     visible: card.has && !card.browse
                     anchors.fill: parent
                     color: "transparent"
                     border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.12)
+                    border.color: Qt.rgba(1, 1, 1, root.isWall ? 0.22 : 0.12)
                 }
 
                 // glass panes: "Browse all" and the empty state
                 GlassSlot { anchors.fill: parent; radius: 8; visible: card.browse || card.placeholder }
+                GlassSlot { anchors.fill: parent; radius: 8; alpha: 0.38; visible: card.ghost }
                 Item {
                     visible: card.browse
                     anchors.fill: parent
@@ -326,7 +344,7 @@ Item {
             shade: true
             trigger: root.focusIdx
             z: 10
-            opacity: Math.max(0, Math.min(1, (root.lift - 0.35) / 0.65))
+            opacity: Math.max(0, Math.min(1, (root.lift - 0.35) / 0.65)) * root.fadeAt(root.topOf(fi))
             visible: opacity > 0.01 && root.active
             // During a row switch the ring follows scrollY directly (already animated); a second y animation
             // on top of it would make the ring lag. Within a row scrollY is settled, so the ring glides.

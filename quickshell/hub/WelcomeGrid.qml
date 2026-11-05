@@ -35,12 +35,18 @@ Item {
     readonly property real rowH: tall + rowGap + small
     readonly property real rowGapY: 23
     readonly property real row2Y: rowH + rowGapY
-    readonly property real contentH: row2Y + rowH
+    readonly property real contentH: row2Y + tall                  // viii-padfix: row 2 is one tall card high (it was measured as 358, which left blank space under it)
+    readonly property real bottomPad: 40                           // viii-padfix: space under the last row while the cards have focus
     width: 3 * colW + 2 * gutter
     height: contentH
 
     function topOf(i) { return cardY[i] - root.scrollY; }
-    readonly property real row2Scroll: Math.max(0, contentH - viewH)
+    // viii-padfix: the Settings fade. A card whose top edge is at or below fadeFull (HomePage px) is fully visible and it is
+    // gone fadeLen higher up. Opacity only: no clip, no mask, no offscreen buffer.
+    readonly property real fadeFull: 100
+    readonly property real fadeLen: 80
+    function fadeAt(top) { return Math.max(0, Math.min(1, (root.y + top - (fadeFull - fadeLen)) / fadeLen)); }
+    readonly property real row2Scroll: Math.max(0, contentH + bottomPad - viewH)
 
     readonly property string home: Quickshell.env("HOME")
     property real nowSec: Date.now() / 1000
@@ -337,7 +343,8 @@ Item {
     component Card: Item {
         id: card
         property int idx: -1
-        opacity: 1                                          // every card stays fully opaque; the ring marks focus
+        opacity: root.fadeAt(card.y)                        // viii-padfix: fades near the top like the Settings rows
+        visible: opacity > 0.01
         property string title: ""
         property string icon: ""               // SVG path, 24x24, drawn as a line icon
         default property alias content: body.data
@@ -461,8 +468,10 @@ Item {
         Txt { id: pt; x: 28; anchors.verticalCenter: parent.verticalCenter; text: pill.label; font.pixelSize: 12 }
     }
     Row {
-        x: 0; y: -36
+        x: 0; y: -36 - root.scrollY
         spacing: 10
+        opacity: Math.max(0, 1 - root.scrollY / 60)                // viii-padfix: leaves with the first row instead of hanging in mid air
+        visible: opacity > 0.01
         Pill { label: Qt.formatDate(new Date(root.nowSec * 1000), "dddd, d MMMM") }
         Pill { label: root.online ? "Online \u00b7 " + root.netMain : "Offline" }
     }
@@ -475,12 +484,12 @@ Item {
     onFocusIdxChanged: { if (focusIdx >= 0) scrollY = focusIdx < 6 ? 0 : row2Scroll; }
     onLiftChanged: { if (lift < 0.05) scrollY = 0; }
 
-    // One clipped viewport keeps the scrolled-up rows from sliding over the tile row above.
+    // viii-padfix: NOT clipped any more. The clip cut the scrolled-up rows along a hard line at the top of the grid and
+    // cut the ring off at the left, right and bottom. Cards fade by position instead (fadeAt).
     Item {
         id: viewport
         width: root.width
         height: root.viewH
-        clip: true
 
     GlassRing {
         id: cardRing
@@ -499,7 +508,7 @@ Item {
         shade: true
         trigger: root.focusIdx
         z: 10
-        opacity: Math.max(0, Math.min(1, (root.lift - 0.35) / 0.65))
+        opacity: Math.max(0, Math.min(1, (root.lift - 0.35) / 0.65)) * root.fadeAt(root.topOf(fi))
         visible: opacity > 0.01 && root.active
         // During a row switch the ring follows scrollY directly (which is already animated).
         // A second y animation on top of it made the ring lag behind and drift out of place.
