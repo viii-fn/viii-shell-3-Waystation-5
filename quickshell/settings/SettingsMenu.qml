@@ -62,18 +62,25 @@ Item {
     Behavior on selH { enabled: root.running; NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
     Behavior on itemPos { enabled: root.running; NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
 
+    // viii-fix1: computed from the rows directly. It runs when `rows` changes, before `ys` and
+    // `safeIndex` have updated, and a NaN here froze the scroll position (all rows at y = 0).
     function ensureVisible() {
         if (rows.length === 0) { scrollGoal = 0; return; }
-        const top = ys[safeIndex];
-        const bot = top + hOf(cur);
-        let g = scrollGoal;
+        const si = Math.max(0, Math.min(rows.length - 1, currentIndex));
+        let top = 0, total = 0;
+        for (let i = 0; i < rows.length; i++) {
+            if (i === si) top = total;
+            total += hOf(rows[i]) + rowGap;
+        }
+        const bot = top + hOf(rows[si]);
+        let g = isFinite(scrollGoal) ? scrollGoal : 0;
         if (top < g) g = top;
         else if (bot > g + panelH - 8) g = bot - panelH + 8;
-        scrollGoal = Math.max(0, Math.min(Math.max(0, ys[rows.length] - rowGap - panelH + 8), g));
+        scrollGoal = Math.max(0, Math.min(Math.max(0, total - rowGap - panelH + 8), g));
     }
     onSafeIndexChanged: ensureVisible()
     onRowsChanged: ensureVisible()
-    onItemIndexChanged: scrollGoal = 0
+    onItemIndexChanged: { scrollGoal = 0; Qt.callLater(ensureVisible); }
 
     component MenuText: Text {
         color: Theme.fg

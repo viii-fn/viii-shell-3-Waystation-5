@@ -534,6 +534,8 @@ FocusScope {
         inPane = false;
         armed = "";
         endSliderDrag();
+        scanTimer.stop();
+        if (statusKind === "loading") statusText = "";
         if (wifiDevice) wifiDevice.scannerEnabled = false;
         if (adapter) adapter.discovering = false;
     }
@@ -897,7 +899,7 @@ FocusScope {
                 root.sysOs = l[0] || "";
                 root.sysKernel = l[1] || "";
                 root.sysHypr = l[2] || "";
-                root.sysQs = l[3] || "";
+                root.sysQs = (l[3] || "").split(" (")[0];
                 root.sysMatugen = l[4] || "";
                 root.sysTz = l[5] || "";
                 root.stUsed = l[6] || "";
