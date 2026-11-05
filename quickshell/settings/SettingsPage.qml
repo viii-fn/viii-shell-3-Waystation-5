@@ -65,12 +65,12 @@ FocusScope {
     property int briSent: -1
 
     // ---- geometry: a real list, centred horizontally, starting at the top (viii-vlist2) ----
-    readonly property real padX: Math.round(width * 0.10)
+    readonly property real padX: Math.round(width * 0.07)
     readonly property real innerW: width - 2 * padX
     readonly property real listW: Math.min(920, innerW)
     readonly property real listX: Math.round((width - listW) / 2)
     readonly property real rowH: 72
-    readonly property real listTop: 112
+    readonly property real listTop: 132
     readonly property real listBottom: height - 36
     readonly property real viewH: listBottom - listTop
     // The list only scrolls when the highlighted row would leave the visible area.
@@ -823,10 +823,9 @@ FocusScope {
         transformOrigin: Item.Center
 
         SettingsText {
-            x: root.padX; y: 34
+            x: root.padX; y: 64
             text: "Settings"
-            font.pixelSize: 38
-            font.weight: Font.Bold
+            font.pixelSize: 34
         }
         SettingsText {
             anchors.right: parent.right
