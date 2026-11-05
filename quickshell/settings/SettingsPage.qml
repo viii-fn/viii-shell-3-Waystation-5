@@ -65,12 +65,12 @@ FocusScope {
     property int briSent: -1
 
     // ---- geometry: a real list, centred horizontally, starting at the top (viii-vlist2) ----
-    readonly property real padX: Math.round(width * 0.07)
+    readonly property real padX: Math.round(width * 0.05)
     readonly property real innerW: width - 2 * padX
     readonly property real listW: Math.min(920, innerW)
     readonly property real listX: Math.round((width - listW) / 2)
     readonly property real rowH: 72
-    readonly property real listTop: 132
+    readonly property real listTop: 142
     readonly property real listBottom: height - 36
     readonly property real viewH: listBottom - listTop
     // The list only scrolls when the highlighted row would leave the visible area.
@@ -823,9 +823,9 @@ FocusScope {
         transformOrigin: Item.Center
 
         SettingsText {
-            x: root.padX; y: 64
+            x: root.padX; y: 65
             text: "Settings"
-            font.pixelSize: 34
+            font.pixelSize: 29
         }
         SettingsText {
             anchors.right: parent.right
@@ -862,7 +862,7 @@ FocusScope {
                     anchors.verticalCenter: parent.verticalCenter
                     text: tile.modelData.icon
                     font.family: Theme.iconFont
-                    font.pixelSize: 28
+                    font.pixelSize: 25
                     color: tile.selected ? Theme.fg : Theme.fgDim
                     Behavior on color { ColorAnimation { duration: 180 } }
                 }
@@ -877,8 +877,6 @@ FocusScope {
                         width: parent.width
                         text: tile.modelData.title
                         font.pixelSize: 20
-                        font.weight: tile.selected ? Font.DemiBold : Font.Medium
-                        color: tile.selected ? Theme.fg : Theme.fgDim
                         Behavior on color { ColorAnimation { duration: 180 } }
                     }
                     SettingsText {
