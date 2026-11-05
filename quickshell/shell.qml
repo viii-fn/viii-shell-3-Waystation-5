@@ -13,6 +13,9 @@ ShellRoot {
     // exactly one ThemeDriver (it glides the Theme colours)
     ThemeDriver {}
 
+    // exactly one ShadeDriver (the shared GlassRing shade interval)
+    ShadeDriver {}
+
     // the wallpaper (drawn here, so it always matches the palette)
     Variants {
         model: Quickshell.screens

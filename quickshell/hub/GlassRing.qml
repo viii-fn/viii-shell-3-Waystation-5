@@ -1,32 +1,34 @@
 // viii-ring-v8
 import QtQuick
 import QtQuick.Shapes
+import "../core"
 
 // The PS5 selection ring.
 //  * ring: fully drawn at all times; a bright band in its conical gradient orbits slowly
 //    and forever. There is no wipe-in / fade-out repeat cycle anymore.
-//  * shade: a wide soft diagonal band sweeps over the content on selection and then
-//    repeats on its own interval. The spin is independent of that interval.
+//  * shade: a wide soft diagonal band sweeps over the content on the shell-wide interval
+//    (core/Shade.qml). The interval is shared and never restarts when the selection moves,
+//    so one animation drives every ring. The spin is independent of the interval.
 Item {
     id: root
     property real radius: 16            // outer radius
     property real thickness: 2.5
     property bool shade: true           // gradient shade over the content
-    property int trigger: 0             // change it to replay the shade sweep
+    property int trigger: 0             // kept for call sites; the shade no longer restarts on selection
     property bool animated: true
 
     // ---- tuning (design values, change here) ----
     readonly property int spinMs: 9000          // one full turn of the ring gradient (slow)
-    readonly property int shadeUpMs: 10         // shade 0 -> peak
-    readonly property int shadeHoldMs: 4        // shade stays at its peak
-    readonly property int shadeDownMs: 1300     // shade peak -> 0 (the diagonal sweep)
-    readonly property int shadeRepeatMs: 5000   // pause before the shade sweeps again (0 = only on selection)
     readonly property real shadePeak: 1.0       // overall strength of the shade (1 = as designed)
     readonly property real shadeSoft: 0.8       // half-width of the diagonal band (bigger = wider, softer)
+    // Shade timing (sweep + interval) lives in core/Shade.qml, shared by every ring.
 
     property real spin: 0               // angle of the conical ring gradient
-    property real pulse: 0              // 0..1 shade strength
-    property real wave: -0.45           // diagonal band position, -shadeSoft .. 1 + shadeSoft
+    // Shade state comes from the shared clock, so every ring is in phase and no ring
+    // owns a timer. Rings that are hidden or not animated add no work.
+    readonly property bool shadeActive: visible && animated && shade
+    readonly property real pulse: shadeActive ? Shade.pulse : 0
+    readonly property real wave: shadeActive ? (Shade.band * (1 + 2 * shadeSoft) - shadeSoft) : -shadeSoft
 
     readonly property real outerR: Math.max(0, Math.min(radius, Math.min(width, height) / 2))
     readonly property real th: thickness
@@ -51,18 +53,10 @@ Item {
         return low + (0.95 - low) * x * x * (3 - 2 * x);
     }
 
-    function play() {
-        if (!animated) return;
-        shadeCycle.restart();
-    }
-    function halt() {
-        shadeCycle.stop();
-        pulse = 0;
-        wave = -shadeSoft;
-    }
-    onVisibleChanged: { if (visible) play(); else halt(); }
-    onTriggerChanged: { if (visible) play(); }
-    Component.onCompleted: if (visible) play()
+    // Kept for existing call sites: the sweep is driven by the shared clock now, so
+    // selecting something never restarts it.
+    function play() {}
+    function halt() {}
 
     // The highlight orbits forever. 360 degrees looks the same as 0, so the loop is seamless.
     NumberAnimation on spin {
@@ -73,20 +67,7 @@ Item {
         easing.type: Easing.Linear
     }
 
-    // One diagonal shade sweep per appearance / selection change, repeating on the shade interval.
-    SequentialAnimation {
-        id: shadeCycle
-        loops: root.shadeRepeatMs > 0 ? Animation.Infinite : 1
-        ParallelAnimation {
-            NumberAnimation { target: root; property: "wave"; from: -root.shadeSoft; to: 1 + root.shadeSoft; duration: Math.max(1, root.shadeUpMs + root.shadeHoldMs + root.shadeDownMs); easing.type: Easing.Linear }
-            SequentialAnimation {
-                NumberAnimation { target: root; property: "pulse"; to: 1; duration: root.shadeUpMs; easing.type: Easing.OutCubic }
-                PauseAnimation { duration: root.shadeHoldMs }
-                NumberAnimation { target: root; property: "pulse"; to: 0; duration: root.shadeDownMs; easing.type: Easing.InOutSine }
-            }
-        }
-        PauseAnimation { duration: Math.max(1, root.shadeRepeatMs) }
-    }
+    // No per-ring animation here: the sweep is a binding to Shade (core/Shade.qml).
 
     // the ring: a big rounded rectangle with a smaller one cut out (odd-even fill). The fill is a
     // conical gradient whose angle slowly turns, so a soft bright band travels around the ring.

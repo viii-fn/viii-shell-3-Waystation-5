@@ -1,4 +1,6 @@
 singleton Motion 1.0 Motion.qml
+singleton Shade 1.0 Shade.qml
+ShadeDriver 1.0 ShadeDriver.qml
 singleton Theme 1.0 Theme.qml
 singleton ScreenTime 1.0 ScreenTime.qml
 singleton Apps 1.0 Apps.qml
