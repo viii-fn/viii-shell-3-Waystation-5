@@ -4,6 +4,7 @@ import Quickshell
 import "../core"
 
 // viii-reflow applied (Welcome move-up engine).
+// viii-store applied (Explore and Wallstore run on the same engine: StoreGrid).
 // PS5 home row. The focused tile sits at the left margin; the row slides underneath it. The name
 // sits under the small tiles (right of the focused one), exactly like the PS5; the big name, the
 // Open button and the screen-time cards sit lower left. One animated number (f = focus position)
@@ -40,6 +41,13 @@ Item {
 
     // ---- viii-explore: the news card row under the Explore tile ----
     readonly property bool explore: cur !== null && cur.isExplore === true
+
+    // ---- viii-store: Wallstore and Explore take the Welcome path: Down enters (no Open button, no separate
+    // page), the tile's icon lifts into the bar, the panes fit the visible screen. Cursor = wCard (0..7). ----
+    readonly property bool wall: cur !== null && cur.isWall === true
+    readonly property bool paneOn: explore || wall
+    readonly property bool paneReady: wall || (explore && News.items.length > 0)
+    signal storeRequested()                       // the "Browse all" pane: open the full Wallstore page
     // A normal application tile: it gets the same focusable content mosaic as Welcome.
     readonly property bool appPage: cur !== null && cur !== undefined && !special && !welcome && !explore
     property bool inCards: false
@@ -105,29 +113,49 @@ Item {
     property bool prompt: false          // "Open in browser?" dialog is up
     property int promptSel: 0            // 0 = Open, 1 = Cancel
     signal linkOpened()
-    readonly property int newsIdx: inCards ? cardIdx : 0
+    readonly property int newsIdx: (inContent && explore) ? wCard : 0       // viii-store
     readonly property var newsCur: (explore && News.items.length > 0) ? News.items[Math.min(newsIdx, News.items.length - 1)] : null
     readonly property url newsSrc: newsCur ? News.src(newsCur.img) : ""
 
-    function down() {                    // from a tile into its content cards
-        if (inContent) { wNav(0, 1); return true; }                              // viii-reflow
-        if ((welcome || appPage) && zoom > 0.99) { wCard = 0; inContent = true; return true; }  // viii-reflow
-        if (!explore || inCards || News.items.length === 0) return false;
-        cardIdx = 0;
-        inCards = true;
+    // ---- viii-store: pane cursor, Enter action, enter/leave ----
+    function pNav(dx, dy) {                        // move the pane cursor by geometry; false = nothing there
+        const g = wall ? wallGrid : exploreGrid;
+        const n = g.nextIdx(wCard, dx, dy);
+        if (n < 0) return false;
+        wCard = n;
         return true;
     }
+    function cNav(dx, dy) { return paneOn ? pNav(dx, dy) : wNav(dx, dy); }
+    function paneAct() {                           // Enter on a focused pane
+        if (explore) {
+            if (newsCur) { promptSel = 0; prompt = true; }
+            return;
+        }
+        if (!wall) return;
+        if (wCard === wallGrid.browseIdx) { storeRequested(); return; }
+        const p = wCard < Wall.recent.length ? Wall.recent[wCard] : "";
+        if (p !== "" && p !== Wall.current && !Wall.busy) Wall.apply(p);
+    }
+    function down() {                    // from a tile into its content cards
+        if (inContent) { cNav(0, 1); return true; }
+        if ((welcome || appPage || paneReady) && zoom > 0.99) {
+            wCard = (wall && Wall.recent.length === 0) ? wallGrid.browseIdx : 0;
+            inContent = true;
+            return true;
+        }
+        return false;
+    }
     function up(force) {                 // from the cards back to the tile
-        if (inContent) { if (!force && wNav(0, -1)) return true; inContent = false; return true; }     // viii-reflow
+        if (inContent) { if (!force && cNav(0, -1)) return true; inContent = false; return true; }
         if (!inCards) return false;
         inCards = false;
         prompt = false;
         return true;
     }
     function clickCard(i) {
-        if (!explore) return;
-        if (inCards && i === cardIdx) { promptSel = 0; prompt = true; }
-        else { inCards = true; cardIdx = i; }
+        if (!paneReady || zoom < 0.99) return;
+        if (inContent && wCard === i) activate();
+        else { wCard = i; inContent = true; }
     }
     function openCurrent() {
         const it = newsCur;
@@ -215,7 +243,7 @@ Item {
     onCurrentChanged: { f = current; infoAnim.restart(); inCards = false; prompt = false; cardIdx = 0; inContent = false; wCard = 0; }
 
     function move(dir) {
-        if (inContent) return wNav(dir, 0);                                      // viii-reflow
+        if (inContent) return cNav(dir, 0);                                      // viii-reflow
         if (inCards) {
             const m = Math.max(0, Math.min(News.items.length - 1, cardIdx + dir));
             if (m === cardIdx) return false;
@@ -233,12 +261,11 @@ Item {
     }
     function reset() { animateF = false; current = startIndex(); f = current; animateF = true; inCards = false; prompt = false; cardIdx = 0; inContent = false; wCard = 0; }
     function activate() {
-        if (root.inContent) return;      // content cards are display-only: Enter does not launch from here
-        if (explore) {
-            if (inCards) { promptSel = 0; prompt = true; }
-            else down();
+        if (root.inContent) {            // viii-store: Explore reads a story, Wallstore applies a wallpaper; Welcome and app cards are display-only
+            if (paneOn) paneAct();
             return;
         }
+        if (paneOn) { down(); return; }  // no entry step: Enter on the tile does what Down does
         if (cur) launched(cur, padL, rowTop, sel, sel);
     }
     function subtitle(e) {
@@ -343,7 +370,7 @@ Item {
         y: 410
         width: 760
         height: 170
-        opacity: (root.welcome || root.explore) ? 0 : root.infoZ * root.infoIn * (1 - root.c)
+        opacity: (root.welcome || root.explore || root.wall) ? 0 : root.infoZ * root.infoIn * (1 - root.c)
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
 
@@ -381,16 +408,6 @@ Item {
         }
     }
 
-    // "Top wallpapers": the most recently set wallpapers, shown while the Wallstore tile is selected (display only)
-    WallStrip {
-        x: root.padL
-        y: 584
-        opacity: (root.cur && root.cur.isWall === true) ? root.infoZ * root.infoIn : 0
-        visible: opacity > 0.01
-        active: root.visible && root.shown && opacity > 0.01
-        transform: Translate { x: (1 - root.infoIn) * 18 }
-    }
-
     // regular app pages: screen-time mosaic plus tall widgets (About, System, News)
     AppContent {
         entry: root.cur
@@ -405,19 +422,48 @@ Item {
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }
 
-    // viii-explore: Linux + PlayStation news, shown while the Explore tile is selected
+    // viii-store: Explore. Eight news panes on the Welcome engine; the picture of the focused story is drawn by Backdrop.
+    StoreGrid {
+        id: exploreGrid
+        mode: "explore"
+        shown: root.shown
+        x: root.padL
+        y: root.restY + (root.focusY - root.restY) * root.c
+        lift: root.c
+        focusIdx: (root.inContent && root.explore) ? root.wCard : -1
+        viewH: 768 - root.focusY
+        opacity: root.explore ? root.infoZ * root.infoIn : 0
+        visible: opacity > 0.01
+        transform: Translate { x: (1 - root.infoIn) * 18 }
+        onCardClicked: i => root.clickCard(i)
+    }
+
+    // viii-store: Wallstore. The wallpaper in use, the recent ones and "Browse all", on the same engine.
+    StoreGrid {
+        id: wallGrid
+        mode: "wall"
+        shown: root.shown
+        x: root.padL
+        y: root.restY + (root.focusY - root.restY) * root.c
+        lift: root.c
+        focusIdx: (root.inContent && root.wall) ? root.wCard : -1
+        viewH: 768 - root.focusY
+        opacity: root.wall ? root.infoZ * root.infoIn : 0
+        visible: opacity > 0.01
+        transform: Translate { x: (1 - root.infoIn) * 18 }
+        onCardClicked: i => root.clickCard(i)
+    }
+
+    // viii-store: the daily news fetch and the "Open in browser?" dialog (Explore)
     ExplorePage {
         anchors.fill: parent
-        padL: root.padL
         shown: root.shown
-        cardsFocus: root.inCards
         idx: root.newsIdx
         prompt: root.prompt
         promptSel: root.promptSel
         opacity: root.explore ? root.infoZ * root.infoIn : 0
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
-        onCardClicked: i => root.clickCard(i)
         onPromptPicked: sel => root.pick(sel)
     }
 

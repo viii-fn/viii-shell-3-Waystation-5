@@ -2,33 +2,21 @@ import QtQuick
 import Quickshell.Networking
 import "../core"
 
-// viii-explore: the PS5 "Explore" page. While the Explore tile is selected: the lead story (source, date,
-// title, short summary) lower left, a row of news cards below, and the selected story's picture as the
-// background (drawn by Backdrop). HomePage owns the focus state (cardsFocus, idx, prompt) and the keys;
-// this file only draws it. Data: News (daily cache). Nothing is loaded or fetched while it is hidden.
+// viii-store: Explore support. The news panes are drawn by StoreGrid (same engine as the Welcome grid);
+// this file keeps what is not a pane: the daily fetch while the Explore tile is on screen, and the
+// "Open in browser?" dialog. HomePage owns the focus state and the keys.
 Item {
     id: root
 
     property bool shown: true
-    property real padL: 128
-    property bool cardsFocus: false
     property int idx: 0
     property bool prompt: false          // "Open in browser?" dialog
     property int promptSel: 0            // 0 = Open, 1 = Cancel
-    signal cardClicked(int i)
     signal promptPicked(int sel)
 
     readonly property bool live: shown && visible
     readonly property var items: News.items
     readonly property var cur: items.length > 0 ? items[Math.max(0, Math.min(idx, items.length - 1))] : null
-
-    readonly property real cardW: 232
-    readonly property real cardH: 130
-    readonly property real cardGap: 14
-    property real scrollX: Math.max(0, idx - 3) * (cardW + cardGap)
-    Behavior on scrollX {
-        NumberAnimation { duration: Motion.scroll; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-    }
 
     // ---- network (same source as the Welcome grid) ----
     readonly property var wifiDevice: {
@@ -57,198 +45,6 @@ Item {
     onLiveChanged: { if (live) kick.restart(); }
     onOnlineChanged: { if (online && live) kick.restart(); }
     Timer { id: kick; interval: 2000; onTriggered: root.maybeFetch() }
-
-    readonly property string emptyTitle: News.busy ? "Getting today\u2019s news" : "No news yet"
-    readonly property string emptyText: {
-        if (News.busy) return "Linux and PlayStation stories are on their way.";
-        if (!online) return "Waiting for a network connection.";
-        if (News.failed) return "Could not reach the news feeds. It will try again in a few minutes.";
-        return "Today\u2019s stories will appear here in a moment.";
-    }
-
-    // ================= lead story =================
-    Item {
-        id: lead
-        x: root.padL
-        y: 372
-        width: 780
-        height: 200
-        property real k: 1
-        opacity: k
-        transform: Translate { y: (1 - lead.k) * 10 }
-
-        NumberAnimation {
-            id: leadAnim
-            target: lead; property: "k"
-            from: 0; to: 1; duration: 380
-            easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out
-        }
-        Connections {
-            target: root
-            function onCurChanged() { leadAnim.restart(); }
-        }
-
-        Column {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            spacing: 10
-            Txt {
-                visible: root.cur !== null
-                width: parent.width
-                text: root.cur ? root.cur.source + "  |  " + News.ago(root.cur.ts) : ""
-                font.pixelSize: 16
-                color: Theme.fgDim
-            }
-            Txt {
-                width: parent.width
-                text: root.cur ? root.cur.title : root.emptyTitle
-                font.pixelSize: 38
-                font.weight: Font.Light
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
-            }
-            Txt {
-                visible: text !== ""
-                width: 700
-                text: root.cur ? root.cur.summary : root.emptyText
-                font.pixelSize: 17
-                color: Theme.fgDim
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
-            }
-        }
-    }
-
-    // ================= card row =================
-    Item {
-        id: strip
-        x: root.padL - 8
-        y: 582
-        width: root.width - root.padL + 8
-        height: root.cardH + 16
-        clip: true
-
-        Repeater {
-            model: root.live ? root.items.length : 0
-            delegate: Item {
-                id: card
-                required property int index
-                readonly property var it: root.items[index]
-                readonly property bool sel: index === root.idx && root.cardsFocus
-                property real kk: sel ? 1 : 0
-                Behavior on kk {
-                    NumberAnimation { duration: Motion.focus; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-                }
-
-                x: 8 + index * (root.cardW + root.cardGap) - root.scrollX
-                y: 8 + (1 - kk) * 3
-                width: root.cardW
-                height: root.cardH
-                visible: x + width > -20 && x < strip.width + 20
-
-                Rectangle { anchors.fill: parent; color: Qt.rgba(0.07, 0.078, 0.098, 1) }
-                Image {
-                    anchors.fill: parent
-                    source: card.it ? News.src(card.it.img) : ""
-                    sourceSize: Qt.size(464, 260)
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    smooth: true
-                    opacity: status === Image.Ready ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 220 } }
-                }
-                Rectangle {
-                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                    height: 84
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0) }
-                        GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.84) }
-                    }
-                }
-                Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.30 * (1 - card.kk)) }
-                Rectangle {
-                    anchors.fill: parent
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.12)
-                }
-
-                // group tag, top left
-                Rectangle {
-                    x: 8; y: 8
-                    width: tag.width + 14
-                    height: 20
-                    radius: 10
-                    color: Qt.rgba(0.07, 0.078, 0.098, 0.88)
-                    border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.16)
-                    Txt {
-                        id: tag
-                        anchors.centerIn: parent
-                        text: card.it ? card.it.group : ""
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-                }
-                // action label on the selected card
-                Rectangle {
-                    anchors { right: parent.right; top: parent.top; rightMargin: 8; topMargin: 8 }
-                    width: act.width + 14
-                    height: 20
-                    radius: 10
-                    opacity: card.kk
-                    visible: root.visible && opacity > 0.01
-                    color: Qt.rgba(1, 1, 1, 0.92)
-                    Txt {
-                        id: act
-                        anchors.centerIn: parent
-                        text: "Enter \u00b7 Read"
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                        color: "#14161a"
-                    }
-                }
-
-                Column {
-                    x: 12
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 9
-                    width: parent.width - 24
-                    spacing: 2
-                    Txt {
-                        width: parent.width
-                        text: card.it ? card.it.source : ""
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                        color: Theme.fgDim
-                    }
-                    Txt {
-                        width: parent.width
-                        text: card.it ? card.it.title : ""
-                        font.pixelSize: 14
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 2
-                    }
-                }
-
-                GlassRing {
-                    readonly property real out: 3.5
-                    x: -out; y: -out
-                    width: card.width + 2 * out
-                    height: card.height + 2 * out
-                    radius: 6 + out
-                    thickness: 2.5
-                    opacity: card.kk
-                    visible: root.visible && opacity > 0.01
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: root.cardClicked(card.index)
-                }
-            }
-        }
-    }
 
     // ================= "Open in browser?" =================
     Item {

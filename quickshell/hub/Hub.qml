@@ -397,6 +397,7 @@ PanelWindow {
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
                 onLinkOpened: Desk.summoned = false
+                onStoreRequested: win.openStore()          // viii-store: the "Browse all" pane
             }
 
             LibraryPage {
