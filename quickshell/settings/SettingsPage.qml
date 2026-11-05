@@ -101,18 +101,18 @@ FocusScope {
     }
 
     readonly property var categories: [
-        { title: "System", icon: "", description: "System software, power and device information" },
-        { title: "Network", icon: "", description: "Internet connection and network settings" },
-        { title: "Sound", icon: "", description: "Audio output, volume and mute controls" },
-        { title: "Display", icon: "", description: "Brightness and connected displays" },
-        { title: "Accessories", icon: "", description: "Bluetooth, keyboard, mouse and connected devices" },
-        { title: "Notifications", icon: "", description: "Desktop notification services" },
-        { title: "Personalisation", icon: "", description: "Wallpaper, colours and visual appearance" },
-        { title: "Storage", icon: "", description: "Disk space and storage information" },
-        { title: "Privacy & Security", icon: "", description: "Screen locking and session security" },
-        { title: "Users & Accounts", icon: "", description: "Current user and desktop session" },
-        { title: "Applications", icon: "", description: "Installed applications and app library" },
-        { title: "About", icon: "", description: "System and shell versions" }
+        { title: "System", icon: "" },
+        { title: "Network", icon: "" },
+        { title: "Sound", icon: "" },
+        { title: "Display", icon: "" },
+        { title: "Accessories", icon: "" },
+        { title: "Notifications", icon: "" },
+        { title: "Personalisation", icon: "" },
+        { title: "Storage", icon: "" },
+        { title: "Privacy and Security", icon: "" },
+        { title: "Users and Accounts", icon: "" },
+        { title: "Applications", icon: "" },
+        { title: "About", icon: "" }
     ]
 
     readonly property var sink: Pipewire.defaultAudioSink
@@ -868,22 +868,15 @@ FocusScope {
                 }
 
                 Column {
-                    x: 90
+                    x: 80
                     width: parent.width - 90 - 28
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 5
+                    spacing: 3
 
                     SettingsText {
                         width: parent.width
                         text: tile.modelData.title
                         font.pixelSize: 20
-                        Behavior on color { ColorAnimation { duration: 180 } }
-                    }
-                    SettingsText {
-                        width: parent.width
-                        text: tile.modelData.description
-                        font.pixelSize: 13
-                        color: tile.selected ? Theme.fgDim : Qt.alpha(Theme.fg, 0.38)
                         Behavior on color { ColorAnimation { duration: 180 } }
                     }
                 }
