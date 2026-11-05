@@ -23,7 +23,7 @@ Singleton {
     readonly property int upMs: 10              // shade 0 -> peak
     readonly property int holdMs: 4             // shade stays at its peak
     readonly property int downMs: 1300          // shade peak -> 0 (the diagonal sweep)
-    readonly property int repeatMs: 5000        // pause before the next sweep (the interval)
+    readonly property int repeatMs: 3600        // pause before the next sweep (the interval)
     readonly property int sweepMs: upMs + holdMs + downMs
     readonly property int cycleMs: sweepMs + repeatMs
 
