@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""viii-kb: switch the keyboard layout live, and prove it took effect.
+
+  viii-kb CODE    set the layout (CODE like gb, us, fr). Exit 0 = Hyprland is really using it, 1 = it is not.
+  viii-kb --get   print the layout the keyboard is really using now
+
+The choice is also saved to ~/.config/viii/kb_layout, which hypr/hyprland.lua reads at startup and on reload, so
+it survives a reboot. If nothing can apply it live, the file is put back the way it was.
+"""
+import json, os, re, subprocess, sys, time
+
+HOME = os.path.expanduser("~")
+CFG = HOME + "/.config/viii/kb_layout"
+
+
+def hc(*args):
+    try:
+        r = subprocess.run(["hyprctl"] + list(args), capture_output=True, text=True, timeout=8)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except Exception as e:
+        return 1, str(e)
+
+
+def from_devices():
+    rc, out = hc("devices", "-j")
+    try:
+        ks = json.loads(out).get("keyboards", [])
+    except Exception:
+        return ""
+    for k in ks:                       # the main keyboard first
+        if k.get("main") and k.get("layout"):
+            return str(k["layout"])
+    for k in ks:
+        if k.get("layout"):
+            return str(k["layout"])
+    return ""
+
+
+def from_option():
+    rc, out = hc("getoption", "input:kb_layout", "-j")
+    try:
+        return str(json.loads(out).get("str", ""))
+    except Exception:
+        return ""
+
+
+def from_file():
+    try:
+        with open(CFG) as fh:
+            return fh.readline().strip()
+    except Exception:
+        return ""
+
+
+def effective():
+    return from_devices() or from_option() or from_file()
+
+
+def write_file(text):
+    os.makedirs(os.path.dirname(CFG), exist_ok=True)
+    tmp = CFG + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write(text)
+    os.replace(tmp, CFG)
+
+
+def wait_for(code, seconds):
+    end = time.time() + seconds
+    while True:
+        if from_devices() == code or (not from_devices() and from_option() == code):
+            return True
+        if time.time() >= end:
+            return False
+        time.sleep(0.08)
+
+
+def main(argv):
+    if len(argv) == 2 and argv[1] == "--get":
+        print(effective())
+        return 0
+    if len(argv) != 2 or not re.fullmatch(r"[a-z]{2,3}", argv[1]):
+        print("usage: viii-kb CODE | viii-kb --get   (CODE = two or three lowercase letters, like gb)")
+        return 2
+    code = argv[1]
+
+    try:
+        with open(CFG) as fh:
+            before = fh.read()
+    except Exception:
+        before = None
+    write_file(code + "\n")
+
+    attempts = [
+        ("eval", ["eval", 'hl.config({ input = { kb_layout = "%s" } })' % code], 0.8),
+        ("keyword", ["keyword", "input:kb_layout", code], 0.8),
+        ("reload", ["reload"], 2.5),
+    ]
+    if wait_for(code, 0.0):
+        print("ok already")
+        return 0
+    for name, cmd, wait in attempts:
+        rc, out = hc(*cmd)
+        if wait_for(code, wait):
+            print("ok " + name)
+            return 0
+        print("%s: no effect (rc=%s) %s" % (name, rc, out.strip().replace("\n", " ")[:120]))
+    # nothing worked: leave the saved choice as it was, so the file never claims a layout that is not active
+    if before is None:
+        try:
+            os.remove(CFG)
+        except OSError:
+            pass
+    else:
+        write_file(before)
+    print("failed: Hyprland still reports '%s'" % effective())
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

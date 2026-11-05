@@ -31,6 +31,7 @@ link "$proj/bin/viii-weather" "$HOME/.local/bin/viii-weather"
 link "$proj/bin/viii-about"   "$HOME/.local/bin/viii-about"
 link "$proj/bin/viii-news"    "$HOME/.local/bin/viii-news"
 link "$proj/bin/viii-record"  "$HOME/.local/bin/viii-record"
+link "$proj/bin/viii-kb"      "$HOME/.local/bin/viii-kb"
 
 missing=()
 for c in quickshell matugen resvg magick hyprctl brightnessctl nmcli hyprlock; do

@@ -415,7 +415,7 @@ FocusScope {
         case "st-free": return stFree || "…";
         case "st-total": return stTotal || "…";
         case "st-pct": return stPct || "…";
-        case "keyboard": return kbLayout;
+        case "keyboard": return kbName(kbLayout);
         case "cursor": return Quickshell.env("XCURSOR_THEME") || "default";
         case "wallpaper-name": return Wall.name(Wall.current) || "None";
         case "shot-dir": return "Pictures/Screenshots";
@@ -625,12 +625,20 @@ FocusScope {
             queueBrightness(brightnessShown * 100 + 5 * delta);
     }
 
+    // viii-kb: the layout is switched by bin/viii-kb, which tries Lua eval, the old keyword and a reload, and only
+    // exits 0 when the keyboard is really using the new layout. The check mark moves after that, not before.
+    property string kbPending: ""
+    function kbName(code) {
+        for (let i = 0; i < kbLayouts.length; i++)
+            if (kbLayouts[i].code === code) return kbLayouts[i].name;
+        return code;
+    }
     function setKeyboard(code) {
-        kbLayout = code;
-        Quickshell.execDetached(["sh", "-c",
-            "mkdir -p \"$HOME/.config/viii\" && printf '%s\\n' \"$1\" > \"$HOME/.config/viii/kb_layout\" && hyprctl keyword input:kb_layout \"$1\"",
-            "sh", code]);
-        setStatus("Keyboard layout: " + code, "success");
+        if (kbSet.running || code === kbLayout) return;
+        kbPending = code;
+        kbSet.command = ["sh", "-c", "exec \"$HOME/.local/bin/viii-kb\" \"$1\"", "sh", code];
+        kbSet.running = true;
+        setStatus("Switching keyboard layout\u2026", "info");
     }
 
     function setReduceMotion(on) {
@@ -924,8 +932,21 @@ FocusScope {
         }
     }
     Process {
+        id: kbSet
+        stdout: StdioCollector { onStreamFinished: console.log("[viii-settings] viii-kb:", String(this.text).trim()) }
+        onExited: (code, status) => {
+            if (code === 0) {
+                root.kbLayout = root.kbPending;
+                root.setStatus("Keyboard layout: " + root.kbName(root.kbPending), "success");
+            } else {
+                root.setStatus("Couldn\u2019t switch the keyboard layout (see: viii log)", "error");
+            }
+            root.kbPending = "";
+        }
+    }
+    Process {
         id: kbProc
-        command: ["sh", "-c", "cat \"$HOME/.config/viii/kb_layout\" 2>/dev/null || hyprctl getoption input:kb_layout -j 2>/dev/null | sed -n 's/.*\"str\": *\"\\([^\"]*\\)\".*/\\1/p'"]
+        command: ["sh", "-c", "\"$HOME/.local/bin/viii-kb\" --get 2>/dev/null || cat \"$HOME/.config/viii/kb_layout\" 2>/dev/null"]
         stdout: StdioCollector { onStreamFinished: root.kbLayout = this.text.trim() || "gb" }
     }
     Process {
