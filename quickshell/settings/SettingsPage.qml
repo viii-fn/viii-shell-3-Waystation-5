@@ -6,6 +6,7 @@ import Quickshell.Services.Pipewire
 import Quickshell.Networking
 import "../core"
 import "../hub"
+// viii-ps5-settings
 
 // PS5-inspired settings surface.
 //
@@ -100,20 +101,51 @@ FocusScope {
         scrollGoal = Math.max(0, Math.min(Math.max(0, categories.length * rowH - viewH), goal));
     }
 
+    // viii-ps5-settings: categories in the order and with the names of the PS5 Settings.
+    readonly property int netIdx: 1
+    readonly property int accIdx: 7
     readonly property var categories: [
-        { title: "System", icon: "" },
-        { title: "Network", icon: "" },
-        { title: "Sound", icon: "" },
-        { title: "Display", icon: "" },
-        { title: "Accessories", icon: "" },
-        { title: "Notifications", icon: "" },
-        { title: "Personalisation", icon: "" },
-        { title: "Storage", icon: "" },
-        { title: "Privacy and Security", icon: "" },
-        { title: "Users and Accounts", icon: "" },
-        { title: "Applications", icon: "" },
-        { title: "About", icon: "" }
+        { key: "accessibility", title: "Accessibility", icon: "\uf29a" },
+        { key: "network", title: "Network", icon: "\uf1eb" },
+        { key: "users", title: "Users and Accounts", icon: "\uf007" },
+        { key: "system", title: "System", icon: "\uf013" },
+        { key: "storage", title: "Storage", icon: "\uf0a0" },
+        { key: "sound", title: "Sound", icon: "\uf028" },
+        { key: "screen", title: "Screen and Video", icon: "\uf108" },
+        { key: "accessories", title: "Accessories", icon: "\uf11b" },
+        { key: "notifications", title: "Notifications", icon: "\uf0f3" },
+        { key: "captures", title: "Captures and Broadcasts", icon: "\uf030" }
     ]
+    readonly property var kbLayouts: [
+        { code: "gb", name: "English (United Kingdom)" }, { code: "us", name: "English (United States)" },
+        { code: "ng", name: "English (Nigeria)" }, { code: "fr", name: "French" },
+        { code: "de", name: "German" }, { code: "es", name: "Spanish" },
+        { code: "pt", name: "Portuguese" }, { code: "br", name: "Portuguese (Brazil)" },
+        { code: "it", name: "Italian" }, { code: "ru", name: "Russian" }
+    ]
+
+    property int itemIndex: 0            // highlighted sub-menu in the left list
+    property bool inPane: false          // focus is on the right pane
+    onItemIndexChanged: { rowIndex = 0; armed = ""; }
+    property string promptKind: "wifi"   // what the text dialog is for: "wifi" or "name"
+    property string kbLayout: "gb"
+    property bool reduceMotion: false
+    property string ipText: ""
+    property string sysOs: ""
+    property string sysKernel: ""
+    property string sysHypr: ""
+    property string sysQs: ""
+    property string sysMatugen: ""
+    property string sysTz: ""
+    property string stUsed: ""
+    property string stFree: ""
+    property string stTotal: ""
+    property string stPct: ""
+    property string testResult: ""
+    property var monitors: []
+    property var pfpFiles: []
+    property string pfpSrc: ""
+    property string pfpOut: ""
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
@@ -160,7 +192,11 @@ FocusScope {
     property bool networkBusy: false
 
     readonly property var currentCategory: categories[Math.max(0, Math.min(categories.length - 1, categoryIndex))]
-    readonly property var currentRows: rowsForCategory()
+    readonly property var currentItems: itemsFor(categoryIndex)
+    readonly property var currentRows: {
+        const it = currentItems[Math.max(0, Math.min(currentItems.length - 1, itemIndex))];
+        return it ? it.rows : [];
+    }
     onCurrentRowsChanged: rowIndex = Math.max(0, Math.min(rowIndex, currentRows.length - 1))
 
     readonly property real volumeShown: {
@@ -218,133 +254,184 @@ FocusScope {
         elide: Text.ElideRight
     }
 
-    function rowsForCategory() {
-        switch (categoryIndex) {
-        case 0: return [
-            { title: "Lock screen", desc: "Lock the current desktop session", action: "lock", kind: "action" },
-            { title: "Suspend", desc: "Put the computer into sleep mode", action: "suspend", kind: "action" },
-            { title: "Restart", desc: "Restart the computer", action: "restart", kind: "action" },
-            { title: "Shut down", desc: "Power off the computer", action: "poweroff", kind: "action" }
-        ];
-        case 1: {
-            const rows = [
-                { title: "Wi-Fi", desc: "Wireless radio · NetworkManager", action: "wifi", kind: "toggle" },
-                { title: "Connected network", desc: "Current wireless connection", action: "network-info", kind: "info" },
-                { title: "Scan for networks", desc: "Discover nearby wireless networks", action: "wifi-scan", kind: "action" }
-            ];
-            const networks = wifiNetworks;
-            for (let i = 0; i < Math.min(3, networks.length); i++) {
-                const n = networks[i];
-                rows.push({ title: n.name,
-                    desc: (n.known ? "Saved network" : "Available network") + " · " + Math.round(n.signalStrength * 100) + "% signal",
-                    action: "wifi-network:" + i, kind: "action" });
+    function rowsOr(list, message) {
+        return list.length > 0 ? list : [{ title: message, action: "none", kind: "info" }];
+    }
+    function baseName(p) { const s = String(p).split("/"); return s[s.length - 1]; }
+
+    // Every category is a list of sub-menus; every sub-menu is a list of rows for the right pane.
+    // row kinds: info (value only) · action (Enter) · toggle · slider · choice (check mark)
+    function itemsFor(ci) {
+        const key = categories[Math.max(0, Math.min(categories.length - 1, ci))].key;
+        switch (key) {
+        case "accessibility": return [
+            { title: "Display and Sound", rows: [
+                { title: "Reduce Motion", desc: "Turn off window animations until Hyprland restarts.", action: "reduce-motion", kind: "toggle" } ] } ];
+        case "network": {
+            const nets = [];
+            for (let i = 0; i < Math.min(12, wifiNetworks.length); i++) {
+                const n = wifiNetworks[i];
+                nets.push({ title: n.name, desc: (n.known ? "Saved  ·  " : "") + Math.round(n.signalStrength * 100) + "% signal",
+                            action: "wifi-network:" + i, kind: "action" });
             }
-            return rows;
+            return [
+                { title: "Connection Status", rows: [
+                    { title: "Status", action: "net-status", kind: "info" },
+                    { title: "Network Name", action: "net-name", kind: "info" },
+                    { title: "Signal Strength", action: "net-signal", kind: "info" },
+                    { title: "IP Address", action: "net-ip", kind: "info" } ] },
+                { title: "Set Up Internet Connection", rows: [
+                    { title: "Wi-Fi", desc: "Turn the wireless radio on or off.", action: "wifi", kind: "toggle" },
+                    { title: "Scan for Networks", desc: "Look for nearby wireless networks.", action: "wifi-scan", kind: "action" }
+                ].concat(nets) },
+                { title: "Test Internet Connection", rows: [
+                    { title: "Test Internet Connection", desc: "Check that this computer can reach the internet.", action: "net-test", kind: "action" } ] } ];
         }
-        case 2: return [
-            { title: "Output volume", desc: "Adjust the default audio output level", action: "volume", kind: "slider" },
-            { title: "Audio", desc: "Mute or unmute the default output", action: "mute", kind: "toggle" },
-            { title: "Output device", desc: "Choose the active PipeWire output", action: "audio-output", kind: "cycle" },
-            { title: "Input device", desc: "Choose the active PipeWire microphone", action: "audio-input", kind: "cycle" }
-        ];
-        case 3: return [
-            { title: "Screen brightness", desc: "Adjust the built-in display backlight", action: "brightness", kind: "slider" },
-            { title: "Display configuration", desc: "Monitor layout and resolution are managed by Hyprland", action: "display-info", kind: "info" },
-            { title: "Desktop session", desc: "Current compositor and display protocol", action: "session", kind: "info" }
-        ];
-        case 4: {
-            const rows = [
-                { title: "Bluetooth", desc: "Bluetooth radio and adapter", action: "bluetooth", kind: "toggle" },
-                { title: "Discover devices", desc: "Scan for nearby Bluetooth accessories", action: "bt-scan", kind: "toggle" },
-                { title: "Cursor theme", desc: "Current cursor theme", action: "cursor", kind: "info" },
-                { title: "Keyboard layout", desc: "Current keyboard layout", action: "keyboard", kind: "info" }
-            ];
-            for (let i = 0; i < Math.min(2, btDevices.length); i++) {
+        case "users": {
+            const pics = pfpFiles.map((p, i) => ({ title: baseName(p), action: "pfp:" + i, kind: "choice", thumb: p }));
+            return [
+                { title: "Account", rows: [
+                    { title: "Profile Name", desc: "Shown in the top bar.", action: "profile-name", kind: "action" } ] },
+                { title: "Profile Picture", rows: [
+                    { title: "Use Initial Only", desc: "Remove the picture and show the first letter of your name.", action: "pfp-clear", kind: "choice" }
+                ].concat(pics) },
+                { title: "Login Settings", rows: [
+                    { title: "Lock Screen", desc: "Lock the session with Hyprlock.", action: "lock", kind: "action" } ] } ];
+        }
+        case "system": {
+            const kb = kbLayouts.map(k => ({ title: k.name, action: "kb:" + k.code, kind: "choice" }));
+            return [
+                { title: "System Software", rows: [
+                    { title: "Operating System", action: "os", kind: "info" },
+                    { title: "Kernel", action: "kernel", kind: "info" },
+                    { title: "Compositor", action: "hyprland", kind: "info" },
+                    { title: "Shell", action: "quickshell", kind: "info" },
+                    { title: "Theme Engine", action: "matugen", kind: "info" } ] },
+                { title: "Language", rows: kb },
+                { title: "Date and Time", rows: [
+                    { title: "Time", action: "time", kind: "info" },
+                    { title: "Date", action: "date", kind: "info" },
+                    { title: "Time Zone", action: "tz", kind: "info" } ] },
+                { title: "Power Saving", rows: [
+                    { title: "Lock Screen", desc: "Lock the current desktop session.", action: "lock", kind: "action" },
+                    { title: "Enter Sleep Mode", desc: "Put the computer to sleep.", action: "suspend", kind: "action" },
+                    { title: "Restart", desc: "Restart the computer.", action: "restart", kind: "action" },
+                    { title: "Turn Off", desc: "Power off the computer.", action: "poweroff", kind: "action" } ] } ];
+        }
+        case "storage": return [
+            { title: "System Storage", rows: [
+                { title: "Used", action: "st-used", kind: "info" },
+                { title: "Free", action: "st-free", kind: "info" },
+                { title: "Capacity", action: "st-total", kind: "info" },
+                { title: "Usage", action: "st-pct", kind: "info" } ] } ];
+        case "sound": {
+            const outs = audioSinks.map((n, i) => ({ title: n.description || n.name, action: "out:" + i, kind: "choice" }));
+            const ins = audioSources.map((n, i) => ({ title: n.description || n.name, action: "in:" + i, kind: "choice" }));
+            return [
+                { title: "Microphone", rows: [
+                    { title: "Mute Microphone", desc: "Stop the default microphone from picking up sound.", action: "mic-mute", kind: "toggle" }
+                ].concat(ins) },
+                { title: "Audio Output", rows: rowsOr(outs, "No audio output found") },
+                { title: "Volume", rows: [
+                    { title: "Volume", desc: "Level of the default audio output.", action: "volume", kind: "slider" },
+                    { title: "Mute", desc: "Silence the default audio output.", action: "mute", kind: "toggle" } ] } ];
+        }
+        case "screen": {
+            const mons = monitors.map((m, i) => ({ title: m.name, action: "mon:" + i, kind: "info" }));
+            return [
+                { title: "Screen", rows: [
+                    { title: "Brightness", desc: "Backlight of the built-in display.", action: "brightness", kind: "slider" } ] },
+                { title: "Video Output", rows: rowsOr(mons, "No display information") },
+                { title: "Wallpaper", rows: [
+                    { title: "Change Wallpaper", desc: "Browse and apply wallpapers in Wallstore.", action: "wallpaper", kind: "action" },
+                    { title: "Current Wallpaper", action: "wallpaper-name", kind: "info" } ] } ];
+        }
+        case "accessories": {
+            const devs = [];
+            for (let i = 0; i < Math.min(10, btDevices.length); i++) {
                 const d = btDevices[i];
-                rows.push({ title: d.name || d.deviceName || "Bluetooth device",
-                    desc: d.paired ? "Paired accessory" : "Nearby accessory",
-                    action: "bt-device:" + i, kind: "action" });
+                devs.push({ title: d.name || d.deviceName || "Bluetooth device", desc: d.paired ? "Paired accessory" : "Nearby accessory",
+                            action: "bt-device:" + i, kind: "action" });
             }
-            return rows;
+            return [
+                { title: "General", rows: [
+                    { title: "Bluetooth", desc: "Turn the Bluetooth adapter on or off.", action: "bluetooth", kind: "toggle" },
+                    { title: "Discover Devices", desc: "Look for nearby Bluetooth accessories.", action: "bt-scan", kind: "toggle" }
+                ].concat(devs) },
+                { title: "Other Accessories", rows: [
+                    { title: "Keyboard Layout", action: "keyboard", kind: "info" },
+                    { title: "Cursor Theme", action: "cursor", kind: "info" } ] } ];
         }
-        case 5: return [
-            { title: "Notification service", desc: "Notification daemon status is not exposed by VIII yet", action: "notifications", kind: "info" },
-            { title: "Notification preferences", desc: "Notification controls are not implemented in this shell yet", action: "notifications-info", kind: "info" }
-        ];
-        case 6: return [
-            { title: "Wallpaper", desc: "Choose a wallpaper in Wallstore", action: "wallpaper", kind: "action" },
-            { title: "Colour palette", desc: "Matugen generates the shell palette from your wallpaper", action: "palette", kind: "info" },
-            { title: "Active wallpaper", desc: "Wallpaper currently driving the system palette", action: "wallpaper-name", kind: "info" },
-            { title: "Cursor theme", desc: "Bibata cursor theme package is installed", action: "cursor", kind: "info" }
-        ];
-        case 7: return [
-            { title: "Root filesystem", desc: "Usage of the system partition", action: "storage", kind: "info" },
-            { title: "Mounted storage", desc: "Disk browsing is handled by the desktop file manager", action: "storage", kind: "info" }
-        ];
-        case 8: return [
-            { title: "Lock screen", desc: "Lock the session using Hyprlock", action: "lock", kind: "action" },
-            { title: "Session security", desc: "Hyprland Wayland session", action: "session", kind: "info" }
-        ];
-        case 9: return [
-            { title: "Current user", desc: "Linux account running this shell", action: "user", kind: "info" },
-            { title: "Desktop session", desc: "Current graphical session", action: "session", kind: "info" }
-        ];
-        case 10: return [
-            { title: "App library", desc: "Browse and launch installed applications", action: "library", kind: "action" },
-            { title: "Package manager", desc: "Package management is not exposed as a native Quickshell control", action: "packages-info", kind: "info" },
-            { title: "Installed applications", desc: "Application discovery is available in the Library", action: "library", kind: "action" }
-        ];
+        case "notifications": return [
+            { title: "Pop-up Notifications", rows: [
+                { title: "Show Pop-up Notifications", desc: "Display a banner when a notification arrives. Resets when the shell restarts.", action: "popups", kind: "toggle" } ] },
+            { title: "Notification History", rows: [
+                { title: "View Notification History", action: "history", kind: "action" },
+                { title: "Clear History", desc: "Remove every stored notification.", action: "history-clear", kind: "action" } ] } ];
         default: return [
-            { title: "Operating system", desc: "Linux distribution", action: "os", kind: "info" },
-            { title: "Kernel", desc: "Currently running Linux kernel", action: "kernel", kind: "info" },
-            { title: "Window manager", desc: "Desktop compositor", action: "hyprland", kind: "info" },
-            { title: "Shell", desc: "Quickshell version", action: "quickshell", kind: "info" },
-            { title: "Theme engine", desc: "Wallpaper colour generation", action: "matugen", kind: "info" }
-        ];
+            { title: "Captures", rows: [
+                { title: "Create Screenshot", desc: "Select a region, a window or the whole screen.", action: "shot", kind: "action" },
+                { title: "Screenshot Folder", action: "shot-dir", kind: "info" } ] } ];
         }
     }
 
     function valueFor(action) {
         if (action.indexOf("wifi-network:") === 0) {
             const n = wifiNetworks[parseInt(action.split(":")[1])];
-            return !n ? "Unavailable" : (n.connected ? "Connected" : (n.stateChanging ? "Connecting…" : (n.known ? "Saved" : "Available")));
+            return !n ? "" : (n.connected ? "Connected" : (n.stateChanging ? "Connecting…" : ""));
         }
         if (action.indexOf("bt-device:") === 0) {
             const d = btDevices[parseInt(action.split(":")[1])];
-            return !d ? "Unavailable" : (d.connected ? "Connected" : (d.pairing ? "Pairing…" : (d.paired ? "Paired" : "Available")));
+            return !d ? "" : (d.connected ? "Connected" : (d.pairing ? "Pairing…" : ""));
         }
+        if (action.indexOf("mon:") === 0) {
+            const m = monitors[parseInt(action.split(":")[1])];
+            return m ? m.width + "×" + m.height + " @ " + Math.round(m.refreshRate) + " Hz" : "";
+        }
+        if (action.indexOf("kb:") === 0) return action.slice(3);
         switch (action) {
-        case "wifi": return !Networking.wifiHardwareEnabled ? "Hardware blocked" : (wifiOn ? "On" : "Off");
-        case "network-info": return wifiName || (wiredDevice ? "Ethernet · " + wiredDevice.name : (wifiOn ? "Not connected" : "Wi-Fi off"));
-        case "wifi-scan": return wifiDevice && wifiDevice.scannerEnabled ? "Scanning…" : "Scan";
-        case "display-info": return "Hyprland · Wayland";
-        case "packages-info": return "Available via system package tools";
-        case "bt-scan": return adapter ? (adapter.discovering ? "Scanning…" : "Off") : "Unavailable";
+        case "wifi-scan": return wifiDevice && wifiDevice.scannerEnabled ? "Scanning…" : "";
+        case "net-status": return wifiConnected || wiredDevice ? "Connected" : "Not Connected";
+        case "net-name": return wifiName || (wiredDevice ? "Ethernet" : "—");
+        case "net-signal": {
+            for (let i = 0; i < wifiNetworks.length; i++)
+                if (wifiNetworks[i].connected) return Math.round(wifiNetworks[i].signalStrength * 100) + "%";
+            return "—";
+        }
+        case "net-ip": return ipText || "—";
+        case "net-test": return testResult;
+        case "profile-name": return Profile.display;
         case "volume": return sink && sink.audio ? Math.round(volumeShown * 100) + "%" : "Unavailable";
-        case "mute": return sink && sink.audio ? (sink.audio.muted ? "Muted" : "On") : "Unavailable";
-        case "audio-output": return sink ? (sink.description || sink.name || "Default output") : "No output detected";
-        case "audio-input": return source ? (source.description || source.name || "Default input") : "No input detected";
         case "brightness": return Desk.brightness >= 0 ? Math.round(brightnessShown * 100) + "%" : "Unavailable";
-        case "bluetooth": return !adapter ? "No adapter" : (adapter.enabled ? "On" : "Off");
-        case "cursor": return Quickshell.env("XCURSOR_THEME") || "Not reported · Bibata installed";
-        case "keyboard": return Quickshell.env("XKB_DEFAULT_LAYOUT") || "Not reported";
-        case "wallpaper": return "Open Wallstore";
-        case "palette": return "Matugen · Wallpaper";
-        case "wallpaper-name": return Wall.name(Wall.current) || "No wallpaper selected";
-        case "storage": return storageText;
-        case "notifications": return "Not exposed";
-        case "notifications-info": return "Not configured";
-        case "user": return Quickshell.env("USER") || "Unknown";
-        case "session": return "Hyprland · Wayland";
-        case "os": return "Arch Linux";
-        case "kernel": return kernelText;
-        case "hyprland": return "Hyprland 0.57";
-        case "quickshell": return "Quickshell 0.3.2";
-        case "matugen": return "Matugen 4.2.0";
+        case "os": return sysOs || "…";
+        case "kernel": return sysKernel || "…";
+        case "hyprland": return sysHypr || "…";
+        case "quickshell": return sysQs || "…";
+        case "matugen": return sysMatugen || "…";
+        case "time": return Qt.formatDateTime(new Date(), "HH:mm");
+        case "date": return Qt.formatDate(new Date(), "ddd d MMM yyyy");
+        case "tz": return sysTz || "—";
+        case "st-used": return stUsed || "…";
+        case "st-free": return stFree || "…";
+        case "st-total": return stTotal || "…";
+        case "st-pct": return stPct || "…";
+        case "keyboard": return kbLayout;
+        case "cursor": return Quickshell.env("XCURSOR_THEME") || "default";
+        case "wallpaper-name": return Wall.name(Wall.current) || "None";
+        case "shot-dir": return "Pictures/Screenshots";
         case "restart":
         case "poweroff": return armed === action ? "Press Enter to confirm" : "";
         default: return "";
         }
+    }
+
+    function checkedFor(action) {
+        if (action.indexOf("kb:") === 0) return kbLayout === action.slice(3);
+        if (action.indexOf("out:") === 0) return audioSinks[parseInt(action.split(":")[1])] === sink;
+        if (action.indexOf("in:") === 0) return audioSources[parseInt(action.split(":")[1])] === source;
+        if (action.indexOf("pfp:") === 0) return Profile.src !== "" && Profile.src === pfpFiles[parseInt(action.split(":")[1])];
+        if (action === "pfp-clear") return Profile.pic === "";
+        return false;
     }
 
     function fractionFor(action) {
@@ -401,12 +488,14 @@ FocusScope {
         }
         pendingNetwork = network;
         wifiPassword = "";
+        promptKind = "wifi";
         passwordPrompt = true;
         setStatus("Enter the network password", "info");
         passwordField.forceActiveFocus();
     }
 
     function submitWifiPassword() {
+        if (promptKind === "name") { submitName(); return; }
         if (!pendingNetwork || wifiPassword.length < 1) {
             setStatus("Enter the Wi-Fi password first", "error");
             return;
@@ -429,33 +518,47 @@ FocusScope {
     function openCategory(index) {
         const next = Math.max(0, Math.min(categories.length - 1, index));
         categoryIndex = next;
+        itemIndex = 0;
         rowIndex = 0;
+        inPane = false;
         armed = "";
         pane = 1;
-        if (wifiDevice) wifiDevice.scannerEnabled = next === 1;
-        if (adapter && next !== 4) adapter.discovering = false;
-        if (next === 1) refreshWifi();
+        if (wifiDevice) wifiDevice.scannerEnabled = next === netIdx;
+        if (adapter && next !== accIdx) adapter.discovering = false;
+        if (next === netIdx) refreshWifi();
+        if (categories[next].key === "users") picScan.running = true;
     }
 
     function closeCategory() {
         pane = 0;
+        inPane = false;
         armed = "";
         endSliderDrag();
         if (wifiDevice) wifiDevice.scannerEnabled = false;
         if (adapter) adapter.discovering = false;
     }
 
+    function enterPane() { if (currentRows.length > 0) inPane = true; }
+
+    function menuItemClicked(index) {
+        if (pane !== 1) return;
+        itemIndex = index;
+        rowIndex = 0;
+        armed = "";
+        inPane = false;
+    }
+
     function menuRowClicked(index) {
         if (pane !== 1) return;
         const row = currentRows[index];
         if (!row) return;
-        if (index !== rowIndex) {
+        if (!inPane || index !== rowIndex) {
+            inPane = true;
             rowIndex = index;
             armed = "";
             return;
         }
-        if (row.kind === "cycle") adjust(1);
-        else if (row.kind !== "slider" && row.kind !== "info") activate();
+        if (row.kind !== "slider" && row.kind !== "info") activate();
     }
 
     // ---- coalesced hardware writes ----
@@ -500,9 +603,12 @@ FocusScope {
     function toggleOn(action) {
         switch (action) {
         case "wifi": return Networking.wifiHardwareEnabled && Networking.wifiEnabled;
-        case "mute": return sink && sink.audio ? !sink.audio.muted : false;
+        case "mute": return sink && sink.audio ? sink.audio.muted : false;
+        case "mic-mute": return source && source.audio ? source.audio.muted : false;
         case "bluetooth": return adapter ? adapter.enabled : false;
         case "bt-scan": return adapter ? adapter.discovering : false;
+        case "reduce-motion": return reduceMotion;
+        case "popups": return Notifs.popups;
         default: return false;
         }
     }
@@ -515,17 +621,62 @@ FocusScope {
             queueVolume(volumeShown + 0.05 * delta);
         else if (row.action === "brightness" && Desk.brightness >= 0)
             queueBrightness(brightnessShown * 100 + 5 * delta);
-        else if (row.action === "audio-output" && audioSinks.length > 0) {
-            let i = audioSinks.indexOf(sink);
-            i = (i + delta + audioSinks.length) % audioSinks.length;
-            Pipewire.preferredDefaultAudioSink = audioSinks[i];
-            setStatus("Output: " + (audioSinks[i].description || audioSinks[i].name), "success");
-        } else if (row.action === "audio-input" && audioSources.length > 0) {
-            let i = audioSources.indexOf(source);
-            i = (i + delta + audioSources.length) % audioSources.length;
-            Pipewire.preferredDefaultAudioSource = audioSources[i];
-            setStatus("Input: " + (audioSources[i].description || audioSources[i].name), "success");
-        }
+    }
+
+    function setKeyboard(code) {
+        kbLayout = code;
+        Quickshell.execDetached(["sh", "-c",
+            "mkdir -p \"$HOME/.config/viii\" && printf '%s\\n' \"$1\" > \"$HOME/.config/viii/kb_layout\" && hyprctl keyword input:kb_layout \"$1\"",
+            "sh", code]);
+        setStatus("Keyboard layout: " + code, "success");
+    }
+
+    function setReduceMotion(on) {
+        reduceMotion = on;
+        Quickshell.execDetached(["hyprctl", "keyword", "animations:enabled", on ? "false" : "true"]);
+        setStatus(on ? "Window animations off" : "Window animations on", "success");
+    }
+
+    function runTest() {
+        if (testProc.running) return;
+        testResult = "Testing…";
+        testProc.running = true;
+        setStatus("Testing the internet connection…", "loading");
+    }
+
+    readonly property string pfpScript: [
+        "set -e",
+        "d=\"$HOME/.config/viii\"; mkdir -p \"$d\"",
+        "magick \"$1\" -auto-orient -resize 256x256^ -gravity center -extent 256x256 \\( -size 256x256 xc:none -fill white -draw 'circle 128,128 128,0' \\) -compose DstIn -composite \"$2\"",
+        "magick \"$1\" -auto-orient -resize 512x512^ -gravity center -extent 512x512 -quality 92 \"$HOME/pfp.jpg\"",
+        "ls \"$d\"/avatar-*.png | grep -v -F \"$2\" | xargs -r rm -f"
+    ].join("\n")
+
+    function setPicture(path) {
+        if (pfpProc.running) return;
+        pfpSrc = path;
+        pfpOut = Profile.home + "/.config/viii/avatar-" + Date.now() + ".png";
+        setStatus("Applying picture…", "loading");
+        pfpProc.command = ["sh", "-c", pfpScript, "sh", path, pfpOut];
+        pfpProc.running = true;
+    }
+
+    function openNamePrompt() {
+        promptKind = "name";
+        wifiPassword = Profile.display;
+        passwordPrompt = true;
+        passwordField.forceActiveFocus();
+        passwordField.selectAll();
+    }
+
+    function submitName() {
+        const n = wifiPassword.trim();
+        passwordPrompt = false;
+        wifiPassword = "";
+        forceActiveFocus();
+        if (n.length < 1) { setStatus("Enter a name first", "error"); return; }
+        Profile.save(n, Profile.pic, Profile.src);
+        setStatus("Profile name saved", "success");
     }
 
     function runPower(action) {
@@ -533,7 +684,7 @@ FocusScope {
             if (armed !== action) {
                 armed = action;
                 armTimer.restart();
-                setStatus("Press Enter again to confirm " + (action === "poweroff" ? "shut down" : "restart"), "info");
+                setStatus("Press Enter again to confirm " + (action === "poweroff" ? "turning off" : "restart"), "info");
                 return;
             }
         }
@@ -548,14 +699,14 @@ FocusScope {
         if (pane !== 1) return;
         const row = currentRows[rowIndex];
         if (!row) return;
-        if (row.action !== "restart" && row.action !== "poweroff") armed = "";
-        if (row.action.indexOf("wifi-network:") === 0) {
-            const n = wifiNetworks[parseInt(row.action.split(":")[1])];
-            connectNetwork(n);
+        const a = String(row.action);
+        if (a !== "restart" && a !== "poweroff") armed = "";
+        if (a.indexOf("wifi-network:") === 0) {
+            connectNetwork(wifiNetworks[parseInt(a.split(":")[1])]);
             return;
         }
-        if (row.action.indexOf("bt-device:") === 0) {
-            const d = btDevices[parseInt(row.action.split(":")[1])];
+        if (a.indexOf("bt-device:") === 0) {
+            const d = btDevices[parseInt(a.split(":")[1])];
             if (!d) return;
             pendingBluetooth = d;
             bluetoothTimer.restart();
@@ -568,24 +719,40 @@ FocusScope {
             }
             return;
         }
-        switch (row.action) {
+        if (a.indexOf("kb:") === 0) { setKeyboard(a.slice(3)); return; }
+        if (a.indexOf("out:") === 0) {
+            const n = audioSinks[parseInt(a.split(":")[1])];
+            if (n) { Pipewire.preferredDefaultAudioSink = n; setStatus("Output: " + (n.description || n.name), "success"); }
+            return;
+        }
+        if (a.indexOf("in:") === 0) {
+            const n = audioSources[parseInt(a.split(":")[1])];
+            if (n) { Pipewire.preferredDefaultAudioSource = n; setStatus("Input: " + (n.description || n.name), "success"); }
+            return;
+        }
+        if (a.indexOf("pfp:") === 0) {
+            const p = pfpFiles[parseInt(a.split(":")[1])];
+            if (p) setPicture(p);
+            return;
+        }
+        switch (a) {
         case "wifi":
             Networking.wifiEnabled = !Networking.wifiEnabled;
             if (!Networking.wifiEnabled && wifiDevice) wifiDevice.scannerEnabled = false;
-            setStatus("Wi-Fi " + (Networking.wifiEnabled ? "enabled" : "disabled"), "success");
             break;
-        case "wifi-scan":
-            refreshWifi();
-            break;
+        case "wifi-scan": refreshWifi(); break;
+        case "net-test": runTest(); break;
         case "mute":
             if (sink && sink.audio) sink.audio.muted = !sink.audio.muted;
             setStatus(sink && sink.audio && sink.audio.muted ? "Audio muted" : "Audio unmuted", "success");
             break;
+        case "mic-mute":
+            if (source && source.audio) source.audio.muted = !source.audio.muted;
+            setStatus(source && source.audio && source.audio.muted ? "Microphone muted" : "Microphone unmuted", "success");
+            break;
         case "bluetooth":
-            if (adapter) {
-                adapter.enabled = !adapter.enabled;
-                setStatus("Bluetooth " + (adapter.enabled ? "enabled" : "disabled"), "success");
-            } else setStatus("No Bluetooth adapter detected", "error");
+            if (adapter) adapter.enabled = !adapter.enabled;
+            else setStatus("No Bluetooth adapter detected", "error");
             break;
         case "bt-scan":
             if (!adapter) setStatus("No Bluetooth adapter detected", "error");
@@ -595,14 +762,19 @@ FocusScope {
                 setStatus(adapter.discovering ? "Scanning for Bluetooth devices…" : "Bluetooth scan stopped", "info");
             }
             break;
-        case "wallpaper":
-            wallstoreRequested();
+        case "reduce-motion": setReduceMotion(!reduceMotion); break;
+        case "popups": Notifs.popups = !Notifs.popups; break;
+        case "profile-name": openNamePrompt(); break;
+        case "pfp-clear":
+            Profile.save(Profile.name, "", "");
+            setStatus("Profile picture removed", "success");
             break;
-        case "library":
-            libraryRequested();
-            break;
+        case "wallpaper": wallstoreRequested(); break;
+        case "history": closeRequested(); Desk.openHistory(); break;
+        case "history-clear": Notifs.clear(); setStatus("Notification history cleared", "success"); break;
+        case "shot": closeRequested(); Desk.openShot(); break;
         case "lock": case "suspend": case "restart": case "poweroff":
-            runPower(row.action);
+            runPower(a);
             break;
         }
     }
@@ -631,7 +803,7 @@ FocusScope {
         }
 
         const row = currentRows[rowIndex];
-        const adjustable = row && (row.kind === "slider" || row.kind === "cycle");
+        const adjustable = false;
         let handled = true;
 
         if (pane === 0) {
@@ -662,43 +834,44 @@ FocusScope {
             return;
         }
 
+        const rowsN = currentRows.length;
+        const itemsN = currentItems.length;
+        const isSlider = !!row && row.kind === "slider";
+
         switch (event.key) {
         case Qt.Key_Escape:
         case Qt.Key_Back:
-            closeCategory();
+            if (inPane) { inPane = false; clearConfirmHint(); }
+            else closeCategory();
             break;
         case Qt.Key_Left:
-            if (adjustable) adjust(-1);
+            if (inPane && isSlider) adjust(-1);
+            else if (inPane) { inPane = false; clearConfirmHint(); }
             break;
         case Qt.Key_Right:
-            if (adjustable) adjust(1);
+            if (!inPane) enterPane();
+            else if (isSlider) adjust(1);
             break;
         case Qt.Key_Up:
-            if (rowIndex > 0) rowIndex = rowIndex - 1;
-            clearConfirmHint();
+            if (inPane) { if (rowIndex > 0) rowIndex = rowIndex - 1; clearConfirmHint(); }
+            else if (itemIndex > 0) itemIndex = itemIndex - 1;
             break;
         case Qt.Key_Down:
-            if (rowIndex < currentRows.length - 1) rowIndex = rowIndex + 1;
-            clearConfirmHint();
+            if (inPane) { if (rowIndex < rowsN - 1) rowIndex = rowIndex + 1; clearConfirmHint(); }
+            else if (itemIndex < itemsN - 1) itemIndex = itemIndex + 1;
             break;
         case Qt.Key_Return:
         case Qt.Key_Enter:
         case Qt.Key_Space:
-            if (row && row.kind === "cycle") adjust(1);
+            if (!inPane) enterPane();
             else activate();
-            break;
-        case Qt.Key_Home:
-            rowIndex = 0;
-            break;
-        case Qt.Key_End:
-            rowIndex = Math.max(0, currentRows.length - 1);
             break;
         case Qt.Key_Plus:
         case Qt.Key_Equal:
-            adjust(1);
+            if (inPane) adjust(1);
             break;
         case Qt.Key_Minus:
-            adjust(-1);
+            if (inPane) adjust(-1);
             break;
         default:
             handled = false;
@@ -706,22 +879,85 @@ FocusScope {
         event.accepted = handled;
     }
 
+    // one process for everything that is read from the system when Settings opens
     Process {
-        id: storageProc
-        command: ["sh", "-c", "df -h / | awk 'NR==2 {print $3 \" used of \" $2 \" (\" $5 \")\"}'"]
+        id: sysProc
+        command: ["sh", "-c", [
+            ". /etc/os-release 2>/dev/null; echo \"${PRETTY_NAME:-Linux}\"",
+            "uname -r",
+            "hyprctl version 2>/dev/null | sed -n 's/^Hyprland \\([0-9][0-9.]*\\).*/\\1/p' | head -n1 | grep . || echo -",
+            "quickshell --version 2>/dev/null | head -n1 | grep . || echo -",
+            "matugen --version 2>/dev/null | head -n1 | grep . || echo -",
+            "timedatectl show -p Timezone --value 2>/dev/null | grep . || echo -",
+            "df -h / | awk 'NR==2 {print $3; print $4; print $2; print $5}'"
+        ].join("; ")]
         stdout: StdioCollector {
-            onStreamFinished: root.storageText = this.text.trim() || "Unavailable"
-        }
-        onExited: (code, status) => {
-            if (code !== 0) root.storageText = "Storage information unavailable";
+            onStreamFinished: {
+                const l = this.text.split("\n");
+                root.sysOs = l[0] || "";
+                root.sysKernel = l[1] || "";
+                root.sysHypr = l[2] || "";
+                root.sysQs = l[3] || "";
+                root.sysMatugen = l[4] || "";
+                root.sysTz = l[5] || "";
+                root.stUsed = l[6] || "";
+                root.stFree = l[7] || "";
+                root.stTotal = l[8] || "";
+                root.stPct = l[9] || "";
+            }
         }
     }
     Process {
-        id: kernelProc
-        command: ["uname", "-r"]
-        stdout: StdioCollector { onStreamFinished: root.kernelText = this.text.trim() || "Unavailable" }
+        id: ipProc
+        command: ["sh", "-c", "ip -4 -o addr show scope global | awk '{print $4}' | head -n1 | cut -d/ -f1"]
+        stdout: StdioCollector { onStreamFinished: root.ipText = this.text.trim() }
+    }
+    Process {
+        id: monProc
+        command: ["hyprctl", "monitors", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.monitors = JSON.parse(this.text); } catch (e) { root.monitors = []; }
+            }
+        }
+    }
+    Process {
+        id: kbProc
+        command: ["sh", "-c", "cat \"$HOME/.config/viii/kb_layout\" 2>/dev/null || hyprctl getoption input:kb_layout -j 2>/dev/null | sed -n 's/.*\"str\": *\"\\([^\"]*\\)\".*/\\1/p'"]
+        stdout: StdioCollector { onStreamFinished: root.kbLayout = this.text.trim() || "gb" }
+    }
+    Process {
+        id: picScan
+        command: ["sh", "-c", "find \"$HOME/Pictures\" -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \\) | sort | head -n 40"]
+        stdout: StdioCollector {
+            onStreamFinished: root.pfpFiles = this.text.split("\n").filter(s => s.length > 0)
+        }
+    }
+    Process {
+        id: pfpProc
         onExited: (code, status) => {
-            if (code !== 0) root.kernelText = "Kernel information unavailable";
+            if (code === 0) {
+                Profile.save(Profile.name, root.pfpOut, root.pfpSrc);
+                root.setStatus("Profile picture updated", "success");
+            } else {
+                root.setStatus("Could not apply the picture (is ImageMagick installed?)", "error");
+            }
+        }
+    }
+    Process {
+        id: testProc
+        command: ["sh", "-c", "ping -c 3 -W 2 1.1.1.1 2>/dev/null | tail -n1"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const m = this.text.match(new RegExp("= [0-9.]+/([0-9.]+)/"));
+                if (m) {
+                    root.testResult = "Connected  ·  " + Math.round(parseFloat(m[1])) + " ms";
+                    root.setStatus("Internet connection is working", "success");
+                } else {
+                    root.testResult = "No connection";
+                    root.setStatus("Could not reach the internet", "error");
+                }
+            }
         }
     }
 
@@ -776,12 +1012,13 @@ FocusScope {
     }
 
     function refreshDetails() {
-        storageText = "Checking storage…";
-        kernelText = "Checking kernel…";
-        storageProc.running = true;
-        kernelProc.running = true;
+        sysProc.running = true;
+        ipProc.running = true;
+        monProc.running = true;
+        kbProc.running = true;
         Desk.briRefresh();
-        if (categoryIndex === 1 && pane === 1) refreshWifi();
+        Profile.reload();
+        if (categoryIndex === netIdx && pane === 1) refreshWifi();
     }
 
     onActiveChanged: {
@@ -790,6 +1027,7 @@ FocusScope {
             forceActiveFocus();
         } else {
             pane = 0;
+            inPane = false;
             passwordPrompt = false;
             networkBusy = false;
             armed = "";
@@ -803,7 +1041,7 @@ FocusScope {
     }
     onCategoryIndexChanged: {
         if (wifiDevice) wifiDevice.scannerEnabled = active && pane === 1 && categoryIndex === 1;
-        if (adapter && !(active && pane === 1 && categoryIndex === 4)) adapter.discovering = false;
+        if (adapter && !(active && pane === 1 && categoryIndex === accIdx)) adapter.discovering = false;
     }
     Component.onCompleted: if (active) refreshDetails()
 
@@ -860,13 +1098,28 @@ FocusScope {
                 Text {
                     x: 30
                     anchors.verticalCenter: parent.verticalCenter
-                    text: tile.modelData.icon
+                    text: iconImg.ok ? "" : tile.modelData.icon
                     font.family: Theme.iconFont
                     font.pixelSize: 25
                     color: tile.selected ? Theme.fg : Theme.fgDim
                     Behavior on color { ColorAnimation { duration: 180 } }
                 }
 
+                // viii-ps5-settings: SVG override (settings/icons/<key>.svg), Nerd Font glyph otherwise
+                Image {
+                    id: iconImg
+                    readonly property bool ok: status === Image.Ready
+                    x: 30
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28; height: 28
+                    source: Qt.resolvedUrl("icons/" + tile.modelData.key + ".svg")
+                    sourceSize.width: 56
+                    sourceSize.height: 56
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    visible: ok
+                    opacity: tile.selected ? 1 : 0.6
+                }
                 Column {
                     x: 80
                     width: parent.width - 90 - 28
@@ -951,16 +1204,20 @@ FocusScope {
             height: root.height - 38 - 70
 
             category: root.currentCategory
+            items: root.currentItems
             rows: root.currentRows
+            itemIndex: root.itemIndex
             currentIndex: root.rowIndex
+            inPane: root.inPane
             armed: root.armed
             running: menuLayer.visible
             valueOf: root.valueFor
             toggleOf: root.toggleOn
             fractionOf: root.fractionFor
+            checkedOf: root.checkedFor
 
             onActivated: root.activate()
-            onAdjusted: delta => root.adjust(delta)
+            onItemClicked: index => root.menuItemClicked(index)
             onRowClicked: index => root.menuRowClicked(index)
             onSliderAt: (action, fraction) => root.setSliderAt(action, fraction)
             onSliderEnd: root.endSliderDrag()
@@ -1033,13 +1290,13 @@ FocusScope {
         scale: 0.92 + 0.08 * root.promptPop
         SettingsText {
             x: 30; y: 26
-            text: "Connect to " + (root.pendingNetwork ? root.pendingNetwork.name : "Wi-Fi")
+            text: root.promptKind === "name" ? "Profile Name" : "Connect to " + (root.pendingNetwork ? root.pendingNetwork.name : "Wi-Fi")
             font.pixelSize: 22
             font.weight: Font.DemiBold
         }
         SettingsText {
             x: 30; y: 66
-            text: "Enter the network password"
+            text: root.promptKind === "name" ? "Enter the name to show in the shell" : "Enter the network password"
             font.pixelSize: 14
             color: Theme.fgDim
         }
@@ -1063,7 +1320,7 @@ FocusScope {
                 font.family: Theme.fontFamily
                 font.pixelSize: 16
                 text: root.wifiPassword
-                echoMode: TextInput.Password
+                echoMode: root.promptKind === "name" ? TextInput.Normal : TextInput.Password
                 onTextChanged: root.wifiPassword = text
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
@@ -1080,7 +1337,7 @@ FocusScope {
         }
         SettingsText {
             x: 30; y: 184
-            text: "Enter  ·  Connect          Esc  ·  Cancel"
+            text: root.promptKind === "name" ? "Enter  ·  Save          Esc  ·  Cancel" : "Enter  ·  Connect          Esc  ·  Cancel"
             font.pixelSize: 13
             color: Theme.fgDim
         }

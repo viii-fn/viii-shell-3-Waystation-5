@@ -29,7 +29,7 @@ hl.env("XCURSOR_SIZE", "24")
 
 hl.config({
     input = {
-        kb_layout  = "gb",    -- was "us"
+        kb_layout  = (function() local f = io.open((os.getenv("HOME") or "") .. "/.config/viii/kb_layout", "r"); if f then local v = f:read("*l"); f:close(); if v and v ~= "" then return v end end; return "gb" end)(),
         kb_variant = "",
         kb_model   = "",
         kb_options = "",

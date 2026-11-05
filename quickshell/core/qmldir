@@ -8,3 +8,4 @@ singleton Wall 1.0 Wall.qml
 singleton Notifs 1.0 Notifs.qml
 singleton News 1.0 News.qml
 singleton Rec 1.0 Rec.qml
+singleton Profile 1.0 Profile.qml

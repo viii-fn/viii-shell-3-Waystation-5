@@ -19,6 +19,7 @@ Singleton {
     property var history: []            // newest first
     property var current: null          // entry on screen (kept until the exit animation is done)
     property bool shown: false          // true while the toast should be visible
+    property bool popups: true          // Settings > Notifications > Pop-up Notifications
     property var queue: []              // entries waiting behind the current toast
 
     readonly property int maxHistory: 100
@@ -58,6 +59,7 @@ Singleton {
     // regular notification: waits its turn behind the toast on screen
     function post(e) {
         record(e);
+        if (!popups) return;
         if (!root.current) present(e);
         else root.queue = root.queue.concat([e]);
     }
@@ -65,6 +67,7 @@ Singleton {
     // charger events: replace whatever is on screen right away
     function postNow(e) {
         record(e);
+        if (!popups) return;
         present(e);
     }
 

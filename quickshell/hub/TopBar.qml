@@ -262,9 +262,18 @@ Item {
             }
             border.width: 1
             border.color: Theme.glassBorder
+            Image {
+                anchors.fill: parent
+                source: Profile.picUrl
+                sourceSize.width: 84
+                sourceSize.height: 84
+                fillMode: Image.PreserveAspectCrop
+                visible: Profile.picUrl !== ""
+            }
             Txt {
                 anchors.centerIn: parent
-                text: (Quickshell.env("USER") || "u").charAt(0).toUpperCase()
+                visible: Profile.picUrl === ""
+                text: Profile.display.charAt(0).toUpperCase()
                 font.pixelSize: 18
                 font.weight: Font.Bold
                 color: Theme.accentText

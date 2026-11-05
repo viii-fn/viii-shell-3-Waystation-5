@@ -2,64 +2,78 @@ import QtQuick
 import "../core"
 import "../hub"
 
-// viii-settings-menu: the one reusable category page.
-//
-// Layout (from the PS5 settings screen):
-//   * item list on the left, 30% of the inner width;
-//   * editable value / slider / toggle on the right, the remaining 70%;
-//   * the caller owns the 10% screen padding, so this component only lays out its own width.
-//
-// Selection is drawn with the shared GlassRing and nothing else: the ring owns both the outline
-// and the travelling overlay shade. There is deliberately no filled "selected row" background.
+// viii-ps5-settings: PS5-style category page.
+//   left  : the category's sub-menus (plain text, the brighter one is the selected one);
+//   right : the real controls of the selected sub-menu (toggles, sliders, choices, lists, values).
+// One GlassRing marks the focus: on the left list, or on a row of the right pane.
 Item {
     id: root
 
     property var category: ({})
+    property var items: []
     property var rows: []
+    property int itemIndex: 0
     property int currentIndex: 0
+    property bool inPane: false
     property string armed: ""
     property bool running: true
 
-    // The page owns the backend; the menu only asks for display values. These are plain
-    // function properties so the component stays reusable for any settings backend.
     property var valueOf: function(action) { return ""; }
     property var toggleOf: function(action) { return false; }
     property var fractionOf: function(action) { return 0; }
+    property var checkedOf: function(action) { return false; }
 
     signal activated()
-    signal adjusted(int delta)
+    signal itemClicked(int index)
     signal rowClicked(int index)
     signal sliderAt(string action, real fraction)
     signal sliderEnd()
 
-    readonly property real gap: 24
-    readonly property real listW: Math.round((width - gap) * 0.30)
-    readonly property real detailX: listW + gap
-    readonly property real detailW: Math.max(0, width - detailX)
-    readonly property real rowH: 66
-    readonly property real rowGap: 6
-    readonly property real pitch: rowH + rowGap
-    readonly property real panelY: 96
-    readonly property real panelH: 520
+    readonly property real listX: 72
+    readonly property real listW: 330
+    readonly property real itemH: 74
+    readonly property real paneX: 395
+    readonly property real paneW: Math.max(0, width - paneX - 51)
+    readonly property real panelY: 92
+    readonly property real panelH: Math.max(0, height - panelY - 24)
+    readonly property real rowGap: 8
+    readonly property real out: 3.5
 
-    readonly property int safeIndex: rows.length > 0
-        ? Math.max(0, Math.min(rows.length - 1, currentIndex)) : 0
+    function hOf(r) { return !r ? 58 : (String(r.kind) === "slider" ? 92 : (r.desc ? 80 : 58)); }
+
+    readonly property int safeIndex: rows.length > 0 ? Math.max(0, Math.min(rows.length - 1, currentIndex)) : 0
     readonly property var cur: rows.length > 0 ? rows[safeIndex] : null
-    readonly property string kind: cur ? String(cur.kind || "info") : "info"
-    readonly property string action: cur ? String(cur.action || "") : ""
-    readonly property bool isOn: kind === "toggle" ? !!toggleOf(action) : false
-    readonly property real frac: kind === "slider"
-        ? Math.max(0, Math.min(1, Number(fractionOf(action)) || 0)) : 0
-    readonly property bool armedNow: armed !== "" && armed === action
-    readonly property string hint: {
-        switch (kind) {
-        case "slider": return "← / →   Adjust";
-        case "cycle": return "← / →   Change";
-        case "toggle": return "Enter   Toggle";
-        case "action": return armedNow ? "Enter   Confirm" : "Enter   Activate";
-        default: return "";
-        }
+    readonly property var ys: {
+        const a = [];
+        let y = 0;
+        for (let i = 0; i < rows.length; i++) { a.push(y); y += hOf(rows[i]) + rowGap; }
+        a.push(y);
+        return a;
     }
+
+    // the ring, the rows and the list scroll with the same curve and duration, so they never drift
+    property real scrollGoal: 0
+    property real scrollY: scrollGoal
+    property real selTop: ys[safeIndex] || 0
+    property real selH: hOf(cur)
+    property real itemPos: itemIndex
+    Behavior on scrollY { enabled: root.running; NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    Behavior on selTop { enabled: root.running; NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    Behavior on selH { enabled: root.running; NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+    Behavior on itemPos { enabled: root.running; NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
+
+    function ensureVisible() {
+        if (rows.length === 0) { scrollGoal = 0; return; }
+        const top = ys[safeIndex];
+        const bot = top + hOf(cur);
+        let g = scrollGoal;
+        if (top < g) g = top;
+        else if (bot > g + panelH - 8) g = bot - panelH + 8;
+        scrollGoal = Math.max(0, Math.min(Math.max(0, ys[rows.length] - rowGap - panelH + 8), g));
+    }
+    onSafeIndexChanged: ensureVisible()
+    onRowsChanged: ensureVisible()
+    onItemIndexChanged: scrollGoal = 0
 
     component MenuText: Text {
         color: Theme.fg
@@ -69,334 +83,251 @@ Item {
         elide: Text.ElideRight
     }
 
-    // ---- header ----
+    // ---- header: only the category name, like the PS5 ----
     MenuText {
-        x: 0; y: 0
-        width: Math.max(0, root.width - 180)
+        x: 0; y: 27
+        width: root.width
         text: root.category && root.category.title ? root.category.title : ""
-        font.pixelSize: 32
-        font.weight: Font.DemiBold
-    }
-    MenuText {
-        x: 0; y: 47
-        width: Math.max(0, root.width - 180)
-        text: root.category && root.category.description ? root.category.description : ""
-        font.pixelSize: 14
-        color: Theme.fgDim
-    }
-    MenuText {
-        anchors.right: parent.right
-        y: 8
-        width: 170
-        text: "Esc   Back"
-        font.pixelSize: 12
-        color: Theme.fgDim
-        horizontalAlignment: Text.AlignRight
+        font.pixelSize: 29
     }
 
-    // ---- left: item list (text only; the ring is the only decoration) ----
-    Column {
-        x: 0; y: root.panelY
-        width: root.listW
-        spacing: root.rowGap
+    // ---- left: sub-menus ----
+    Repeater {
+        model: root.items.length
+        delegate: Item {
+            id: li
+            required property int index
+            readonly property var entry: root.items[index] || null
+            readonly property bool selected: root.itemIndex === index
+            x: root.listX
+            y: root.panelY + index * root.itemH
+            width: root.listW
+            height: root.itemH
+            MenuText {
+                x: 16
+                width: parent.width - 32
+                anchors.verticalCenter: parent.verticalCenter
+                text: li.entry ? String(li.entry.title || "") : ""
+                font.pixelSize: 17
+                color: li.selected ? Theme.fg : Qt.alpha(Theme.fg, 0.45)
+                Behavior on color { ColorAnimation { duration: 160 } }
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.itemClicked(li.index)
+            }
+        }
+    }
+    GlassRing {
+        x: root.listX - root.out
+        y: root.panelY + root.itemPos * root.itemH + 7 - root.out
+        width: root.listW + 2 * root.out
+        height: root.itemH - 14 + 2 * root.out
+        radius: 3 + root.out
+        thickness: 2.5
+        shade: true
+        trigger: root.itemIndex
+        animated: root.running && !root.inPane
+        visible: !root.inPane && root.items.length > 0
+        onAnimatedChanged: if (animated && visible) play()
+        z: 3
+    }
+
+    // ---- right: the controls of the selected sub-menu ----
+    Item {
+        id: pane
+        x: root.paneX - 8
+        y: root.panelY - 8
+        width: root.paneW + 16
+        height: root.panelH + 8
+        clip: true
+
+        GlassRing {
+            x: 8 - root.out
+            y: 8 + root.selTop - root.scrollY - root.out
+            width: root.paneW + 2 * root.out
+            height: root.selH + 2 * root.out
+            radius: 3 + root.out
+            thickness: 2.5
+            shade: true
+            trigger: root.safeIndex * 100 + root.itemIndex
+            animated: root.running && root.inPane
+            visible: root.inPane && root.rows.length > 0
+            onAnimatedChanged: if (animated && visible) play()
+            z: 3
+        }
 
         Repeater {
             model: root.rows.length
-
             delegate: Item {
-                id: item
+                id: rw
                 required property int index
-
                 readonly property var entry: root.rows[index] || null
-                readonly property bool selected: root.currentIndex === index
+                readonly property string kind: entry ? String(entry.kind || "info") : "info"
+                readonly property string act: entry ? String(entry.action || "") : ""
+                readonly property bool sel: root.inPane && root.safeIndex === index
+                readonly property bool checked: kind === "choice" ? !!root.checkedOf(act) : false
+                readonly property bool hasThumb: !!(entry && entry.thumb)
+                readonly property real tx: kind === "choice" ? (hasThumb ? 112 : 58) : 24
+                readonly property string val: (kind === "toggle" || kind === "slider") ? "" : String(root.valueOf(act) || "")
+                readonly property bool on: kind === "toggle" ? !!root.toggleOf(act) : false
+                readonly property real frac: kind === "slider" ? Math.max(0, Math.min(1, Number(root.fractionOf(act)) || 0)) : 0
+                readonly property bool armedNow: root.armed !== "" && root.armed === act
 
-                width: root.listW
-                height: root.rowH
+                x: 8
+                width: root.paneW
+                height: root.hOf(entry)
+                y: 8 + (root.ys[index] !== undefined ? root.ys[index] : 0) - root.scrollY
+                visible: y + height > 0 && y < pane.height
+                opacity: root.inPane ? 1 : 0.7
+                Behavior on opacity { NumberAnimation { duration: 180 } }
+
+                Rectangle {   // hairline between rows (the ring replaces it on the focused row)
+                    x: 24; y: parent.height + root.rowGap / 2
+                    width: parent.width - 48; height: 1
+                    color: Qt.alpha(Theme.fg, 0.07)
+                    visible: !rw.sel
+                }
+
+                MenuText {   // check mark of the chosen option
+                    x: 24
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "✓"
+                    font.pixelSize: 18
+                    visible: rw.kind === "choice" && rw.checked
+                }
+                Image {
+                    visible: rw.hasThumb
+                    x: 58
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 40; height: 40
+                    source: rw.hasThumb ? "file://" + encodeURI(String(rw.entry.thumb)) : ""
+                    sourceSize.width: 80
+                    sourceSize.height: 80
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
 
                 Column {
-                    x: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(0, root.listW - 32)
-                    spacing: 5
-
+                    x: rw.tx
+                    y: rw.kind === "slider" ? 14 : (parent.height - implicitHeight) / 2
+                    width: rw.width - rw.tx - 24 - (rw.kind === "toggle" ? 70 : 0)
+                             - (rw.val !== "" ? Math.min(320, valText.implicitWidth) + 16 : 0)
+                    spacing: 4
                     MenuText {
                         width: parent.width
-                        text: item.entry ? String(item.entry.title || "") : ""
-                        font.pixelSize: 16
-                        font.weight: item.selected ? Font.DemiBold : Font.Medium
-                        color: item.selected ? Theme.fg : Theme.fgDim
-                        Behavior on color { ColorAnimation { duration: 160 } }
+                        text: rw.entry ? String(rw.entry.title || "") : ""
+                        font.pixelSize: 17
                     }
                     MenuText {
                         width: parent.width
-                        text: item.entry ? String(item.entry.desc || "") : ""
-                        font.pixelSize: 12
+                        visible: !!(rw.entry && rw.entry.desc)
+                        text: rw.entry && rw.entry.desc ? String(rw.entry.desc) : ""
+                        font.pixelSize: 13
                         color: Theme.fgDim
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
                     }
                 }
 
-                MouseArea {
-                    id: area
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.rowClicked(item.index)
+                MenuText {   // value on the right (info rows, actions, choices)
+                    id: valText
+                    anchors.right: parent.right
+                    anchors.rightMargin: 24
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(320, implicitWidth)
+                    text: rw.val
+                    visible: rw.val !== ""
+                    horizontalAlignment: Text.AlignRight
+                    font.pixelSize: 16
+                    color: rw.armedNow ? Theme.accent : Theme.fgDim
+                    Behavior on color { ColorAnimation { duration: 160 } }
                 }
-            }
-        }
-    }
 
-    // ---- the one selection marker: shared ring + overlay shade ----
-    GlassRing {
-        readonly property real out: 3.5
-        x: -out
-        y: root.panelY + root.safeIndex * root.pitch - out
-        width: root.listW + 2 * out
-        height: root.rowH + 2 * out
-        radius: 3 + out
-        thickness: 2.5
-        shade: true
-        trigger: root.safeIndex
-        animated: root.running
-        visible: root.rows.length > 0
-        // when the page becomes the visible layer again, replay the shade from its start
-        onAnimatedChanged: if (animated && visible) play()
-        z: 3
-        opacity: visible ? 1 : 0
-        Behavior on y {
-            NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out }
-        }
-    }
-
-    // ---- right: the selected item's control (no panel; text and controls only) ----
-    Item {
-        id: detail
-        x: root.detailX + 34
-        y: root.panelY + 30
-        width: Math.max(0, root.detailW - 68)
-        height: root.panelH - 60
-
-        MenuText {
-            x: 0; y: 0
-            text: "SELECTED"
-            font.pixelSize: 11
-            font.letterSpacing: 1.6
-            color: Theme.fgDim
-        }
-        MenuText {
-            x: 0; y: 18
-            width: detail.width
-            text: root.cur ? String(root.cur.title || "") : ""
-            font.pixelSize: 24
-            font.weight: Font.DemiBold
-        }
-        MenuText {
-            x: 0; y: 56
-            width: detail.width
-            text: root.cur ? String(root.cur.desc || "") : ""
-            font.pixelSize: 13
-            color: Theme.fgDim
-            wrapMode: Text.WordWrap
-            maximumLineCount: 2
-            elide: Text.ElideRight
-        }
-
-        MenuText {
-            x: 0; y: 120
-            text: root.kind === "toggle" ? "STATE"
-                : (root.kind === "action" ? "ACTION"
-                : (root.kind === "info" ? "INFORMATION" : "VALUE"))
-            font.pixelSize: 11
-            font.letterSpacing: 1.6
-            color: Theme.fgDim
-        }
-        MenuText {
-            x: 0; y: 140
-            width: detail.width
-            text: root.action !== "" ? String(root.valueOf(root.action)) : ""
-            font.pixelSize: root.kind === "cycle" ? 28 : 36
-            font.weight: Font.DemiBold
-            color: root.armedNow ? Theme.accent : Theme.fg
-            Behavior on color { ColorAnimation { duration: 160 } }
-        }
-
-        // slider
-        Item {
-            id: sliderItem
-            visible: root.kind === "slider"
-            x: 0; y: 214
-            width: Math.min(440, detail.width)
-            height: 30
-
-            readonly property real knobW: 18
-            readonly property real usable: Math.max(1, width - knobW)
-
-            Rectangle {
-                id: track
-                x: sliderItem.knobW / 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: sliderItem.usable
-                height: 6
-                radius: 3
-                color: Theme.glassHi
-                Rectangle {
-                    height: parent.height
-                    radius: 3
-                    width: track.width * root.frac
-                    color: Theme.accent
-                    Behavior on width {
-                        enabled: !slideArea.pressed
-                        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                Item {   // toggle
+                    visible: rw.kind === "toggle"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 24
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 54; height: 30
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 15
+                        color: rw.on ? Theme.accent : Theme.glassHi
+                        border.width: 1
+                        border.color: Theme.glassBorder
+                        Behavior on color { ColorAnimation { duration: 200 } }
+                    }
+                    Rectangle {
+                        width: 22; height: 22; radius: 11
+                        y: 4
+                        x: rw.on ? 28 : 4
+                        color: rw.on ? Theme.accentText : Theme.fgDim
+                        Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.3 } }
+                        Behavior on color { ColorAnimation { duration: 200 } }
                     }
                 }
-            }
-            Rectangle {
-                width: sliderItem.knobW; height: sliderItem.knobW
-                radius: sliderItem.knobW / 2
-                anchors.verticalCenter: parent.verticalCenter
-                x: sliderItem.knobW / 2 + sliderItem.usable * root.frac - width / 2
-                color: Theme.fg
-                scale: slideArea.pressed ? 1.25 : (slideArea.containsMouse ? 1.12 : 1)
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack; easing.overshoot: 2 } }
-                Behavior on x {
-                    enabled: !slideArea.pressed
-                    NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+
+                Item {   // slider
+                    id: sl
+                    visible: rw.kind === "slider"
+                    x: 24; y: parent.height - 36
+                    width: parent.width - 48
+                    height: 30
+                    readonly property real knobW: 18
+                    readonly property real usable: Math.max(1, width - knobW)
+                    Rectangle {
+                        id: track
+                        x: sl.knobW / 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: sl.usable; height: 6; radius: 3
+                        color: Theme.glassHi
+                        Rectangle {
+                            height: parent.height; radius: 3
+                            width: track.width * rw.frac
+                            color: Theme.accent
+                            Behavior on width { enabled: !slideArea.pressed; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                        }
+                    }
+                    Rectangle {
+                        width: sl.knobW; height: sl.knobW; radius: sl.knobW / 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: sl.knobW / 2 + sl.usable * rw.frac - width / 2
+                        color: Theme.fg
+                        Behavior on x { enabled: !slideArea.pressed; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    }
+                    MouseArea {
+                        id: slideArea
+                        anchors.fill: parent
+                        anchors.margins: -8
+                        preventStealing: true
+                        cursorShape: Qt.PointingHandCursor
+                        function apply(mx) {
+                            root.sliderAt(rw.act, Math.max(0, Math.min(1, (mx - 8 - sl.knobW / 2) / sl.usable)));
+                        }
+                        onPressed: mouse => apply(mouse.x)
+                        onPositionChanged: mouse => { if (pressed) apply(mouse.x); }
+                        onReleased: root.sliderEnd()
+                        onCanceled: root.sliderEnd()
+                    }
                 }
-            }
-            MouseArea {
-                id: slideArea
-                anchors.fill: parent
-                anchors.margins: -8
-                hoverEnabled: true
-                preventStealing: true
-                cursorShape: Qt.PointingHandCursor
-                function apply(mx) {
-                    root.sliderAt(root.action, Math.max(0, Math.min(1,
-                        (mx - 8 - sliderItem.knobW / 2) / sliderItem.usable)));
+                MenuText {   // percent of a slider
+                    visible: rw.kind === "slider"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 24
+                    y: 14
+                    text: String(root.valueOf(rw.act) || "")
+                    color: Theme.fgDim
                 }
-                onPressed: mouse => apply(mouse.x)
-                onPositionChanged: mouse => { if (pressed) apply(mouse.x); }
-                onReleased: root.sliderEnd()
-                onCanceled: root.sliderEnd()
-            }
-        }
 
-        // toggle
-        Item {
-            visible: root.kind === "toggle"
-            x: 0; y: 208
-            width: 80; height: 42
-
-            Rectangle {
-                anchors.fill: parent
-                radius: 21
-                color: root.isOn ? Theme.accent : Theme.glassHi
-                border.width: 1
-                border.color: Theme.glassBorder
-                Behavior on color { ColorAnimation { duration: 200 } }
-            }
-            Rectangle {
-                width: 34; height: 34
-                radius: 17
-                y: 4
-                x: root.isOn ? 42 : 4
-                color: root.isOn ? Theme.accentText : Theme.fgDim
-                Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.3 } }
-                Behavior on color { ColorAnimation { duration: 200 } }
-            }
-            MouseArea {
-                anchors.fill: parent
-                anchors.margins: -10
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.activated()
-            }
-        }
-
-        // cycle: the big value above is the current choice, these change it
-        Row {
-            visible: root.kind === "cycle"
-            x: 0; y: 212
-            spacing: 18
-
-            Item {
-                width: 48; height: 42
-                MenuText {
-                    anchors.centerIn: parent
-                    text: "‹"
-                    font.pixelSize: 26
-                    color: prevArea.containsMouse ? Theme.accent : Theme.fg
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                }
                 MouseArea {
-                    id: prevArea
                     anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.adjusted(-1)
+                    z: -1
+                    cursorShape: rw.kind === "info" ? Qt.ArrowCursor : Qt.PointingHandCursor
+                    onClicked: root.rowClicked(rw.index)
                 }
             }
-            Item {
-                width: 48; height: 42
-                MenuText {
-                    anchors.centerIn: parent
-                    text: "›"
-                    font.pixelSize: 26
-                    color: nextArea.containsMouse ? Theme.accent : Theme.fg
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                }
-                MouseArea {
-                    id: nextArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.adjusted(1)
-                }
-            }
-        }
-
-        // action
-        Item {
-            visible: root.kind === "action"
-            x: 0; y: 214
-            width: Math.min(300, detail.width)
-            height: 40
-
-            MenuText {
-                anchors.centerIn: parent
-                text: root.armedNow ? "Press Enter again" : "Press Enter"
-                font.pixelSize: 14
-                font.weight: Font.Medium
-                color: root.armedNow ? Theme.accent
-                    : (actionArea.containsMouse ? Theme.accent : Theme.fg)
-                Behavior on color { ColorAnimation { duration: 140 } }
-            }
-            MouseArea {
-                id: actionArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.activated()
-            }
-        }
-
-        // info
-        MenuText {
-            visible: root.kind === "info"
-            x: 0; y: 216
-            width: detail.width
-            text: "Read only"
-            font.pixelSize: 14
-            color: Theme.fgDim
-        }
-
-        MenuText {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            text: root.hint
-            font.pixelSize: 12
-            color: root.armedNow ? Theme.accent : Theme.fgDim
-            horizontalAlignment: Text.AlignLeft
         }
     }
 }
