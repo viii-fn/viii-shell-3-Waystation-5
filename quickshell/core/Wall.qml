@@ -17,6 +17,7 @@ Singleton {
     property bool scanned: false
     property bool scanFailed: false
     property string error: ""
+    property var added: ({})              // viii-psstore: path -> modification time in seconds (the Wallstore's "New")
 
     function src(p) { return p ? "file://" + encodeURI(p) : ""; }
     function name(p) {
@@ -37,10 +38,23 @@ Singleton {
     Process {
         id: lister
         onExited: (code, status) => { root.scanned = true; if (code !== 0 && root.files.length === 0) root.scanFailed = true; }
-        command: ["find", root.dir, "-maxdepth", "2", "-type", "f", "(", "-iname", "*.jpg", "-o", "-iname", "*.jpeg", "-o", "-iname", "*.png", "-o", "-iname", "*.webp", ")"]
+        command: ["find", root.dir, "-maxdepth", "2", "-type", "f", "(", "-iname", "*.jpg", "-o", "-iname", "*.jpeg", "-o", "-iname", "*.png", "-o", "-iname", "*.webp", ")", "-printf", "%T@ %p\n"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const l = this.text.split("\n").filter(s => s.length > 0);
+                // viii-psstore: each line is "<mtime> <path>"
+                const l = [];
+                const added = {};
+                const rows = this.text.split("\n");
+                for (let i = 0; i < rows.length; i++) {
+                    const r = rows[i];
+                    const k = r.indexOf(" ");
+                    if (k <= 0) continue;
+                    const p = r.slice(k + 1);
+                    if (p.length === 0) continue;
+                    added[p] = Number(r.slice(0, k)) || 0;
+                    l.push(p);
+                }
+                root.added = added;
                 l.sort((a, b) => a.localeCompare(b));
                 root.files = l;
                 root.scanned = true;

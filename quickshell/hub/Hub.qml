@@ -67,9 +67,12 @@ PanelWindow {
     readonly property real dW: width / s
     readonly property real dH: height / s
     readonly property real vOff: Math.max(0, (dH - 768) / 2)
-    readonly property bool appsMissing: home.entries.length <= 3 || libAll.length === 0
+    readonly property bool appsMissing: home.entries.length <= 1 || libAll.length === 0
 
-    readonly property var sel: page === 1 ? lib.cur : home.cur
+    // viii-psstore: the Wallstore is a tab (page -1), not a tile. It is selected through this fixed entry
+    // (Apps.paletteFor gives the wallpaper palette for isWall entries). Pages: -1 Wallstore, 0 Home, 1 Library.
+    readonly property var storeEntry: ({ isWall: true, name: "Wallstore", id: "viii.wallstore" })
+    readonly property var sel: page === 1 ? lib.cur : (page === -1 ? storeEntry : home.cur)
 
     function iconUrl(entry) {
         if (!entry || entry.isLibrary === true || entry.isWall === true || entry.isWelcome === true || entry.isExplore === true) return "";
@@ -80,7 +83,8 @@ PanelWindow {
 
     // viii-ps5hub: Explore is merged into the Welcome page (widgets + news feeds), so it has no tile of its own
     function rebuild() {
-        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }, { isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        // viii-psstore: like the PS5 since April 2026 the home row is Welcome plus the games; Wallstore and Library are tabs
+        home.entries = [{ isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9));
         home.reset();
         libAll = Apps.alphabetical();
         filterLib();
@@ -230,9 +234,18 @@ PanelWindow {
     property string query: ""
     property var libAll: []              // every app, A-Z; lib.entries is this list filtered by query
     onQueryChanged: filterLib()
-    onPageChanged: { if (page === 0) { query = ""; searchOpen = false; searchFocus = false; } else { home.inCards = false; home.inContent = false; home.prompt = false; } }
+    onPageChanged: { if (page !== 1) { query = ""; searchOpen = false; searchFocus = false; } if (page !== 0) { home.inCards = false; home.inContent = false; home.prompt = false; } }
 
-    function openStore() { storeOpen = true; Theme.applyWallpaper(); }
+    function openStore() {                  // viii-psstore: the Wallstore is a tab now (Settings and the old entry points land here)
+        historyOpen = false;
+        page = -1;
+        tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false;
+        root.forceActiveFocus();
+    }
+    function shiftPage(d) {                 // L1 / R1: Tab or PageDown = next tab, Shift+Tab or PageUp = previous
+        page = Math.max(-1, Math.min(1, page + d));
+        tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false;
+    }
     function openHistory() {
         historyOpen = true;
         bellFocus = false;
@@ -278,14 +291,16 @@ PanelWindow {
             else if (bellFocus) { if (d < 0) { bellFocus = false; searchFocus = true; } else { bellFocus = false; gearFocus = true; } }
             else if (searchFocus) { if (d < 0) searchFocus = false; else { searchFocus = false; bellFocus = true; } }
             else if (page === 1 && d > 0) searchFocus = true;
-            else page = Math.max(0, Math.min(1, page + d));
+            else page = Math.max(-1, Math.min(1, page + d));
         }
         else if (page === 0) home.move(d);
+        else if (page === -1) store.move(d, 0);
         else lib.move(d, 0);
     }
     function vert(d) {
         if (tabsFocus) { if (d > 0) { tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false; } }
         else if (page === 0) { if (d > 0) home.down(); else if (!home.up()) tabsFocus = true; }
+        else if (page === -1) { if (!store.move(0, d) && d < 0) tabsFocus = true; }
         else { if (!lib.move(0, d) && d < 0) tabsFocus = true; }
     }
     function choose() {
@@ -294,6 +309,7 @@ PanelWindow {
         if (tabsFocus && gearFocus) { openSettings(); return; }
         if (tabsFocus) tabsFocus = false;
         else if (page === 0) home.activate();
+        else if (page === -1) store.activate();
         else lib.activate();
     }
     function back() {
@@ -304,8 +320,9 @@ PanelWindow {
         else if (searchOpen) searchOpen = false;
         else if (page === 0 && home.inContent) home.up(true);
         else if (page === 0 && home.inCards) home.up();
+        else if (page === -1 && store.back()) { }
         else if (tabsFocus) tabsFocus = false;
-        else if (page === 1) page = 0;
+        else if (page !== 0) page = 0;
         else Desk.summoned = false;
     }
 
@@ -322,13 +339,14 @@ PanelWindow {
         case Qt.Key_Up: vert(-1); break;
         case Qt.Key_Down: vert(1); break;
         case Qt.Key_Return: case Qt.Key_Enter: choose(); break;
-        case Qt.Key_Space: if (searchOpen && query !== "") typeChar(" "); else choose(); break;
-        case Qt.Key_Backspace: if (searchOpen && query !== "") query = query.slice(0, -1); else handled = false; break;
-        case Qt.Key_Tab: page = 1 - page; tabsFocus = false; gearFocus = false; bellFocus = false; searchFocus = false; break;
+        case Qt.Key_Space: if (page === -1 && store.query !== "") store.typeChar(" "); else if (searchOpen && query !== "") typeChar(" "); else choose(); break;
+        case Qt.Key_Backspace: if (page === -1 && store.query !== "") store.backspace(); else if (searchOpen && query !== "") query = query.slice(0, -1); else handled = false; break;
+        case Qt.Key_Tab: case Qt.Key_PageDown: shiftPage(1); break;
+        case Qt.Key_Backtab: case Qt.Key_PageUp: shiftPage(-1); break;
         case Qt.Key_Escape: back(); break;
         default: {
             const c = e.text.length === 1 ? e.text.charCodeAt(0) : 0;
-            if ((e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0 && c >= 32 && c !== 127) typeChar(e.text);
+            if ((e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0 && c >= 32 && c !== 127) { if (page === -1) store.typeChar(e.text); else typeChar(e.text); }
             else handled = false;
         }
         }
@@ -347,14 +365,14 @@ PanelWindow {
             anchors.fill: parent
             icon: win.iconUrl(win.sel)
             shown: win.shown
-            wallpaper: win.settingsOpen || settings.reveal > 0.01 || (win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true))
+            wallpaper: win.settingsOpen || settings.reveal > 0.01 || (win.page === 0 && !!win.sel && (win.sel.isWall === true || win.sel.isWelcome === true)) || win.page === -1
             baseBehind: win.emptyDesk
             // settings: the wallpaper is dimmed to about 45% brightness (0.55 black-ish overlay)
             dim: (win.settingsOpen || settings.reveal > 0.01) ? 0.55 : 0.28
             scrim: !(win.settingsOpen || settings.reveal > 0.01)
-            news: !win.settingsOpen && settings.reveal < 0.01 && win.page === 0 && !!win.sel && win.sel.isExplore === true && home.newsSrc.toString() !== ""
+            news: !win.settingsOpen && settings.reveal < 0.01 && win.page === -1 && store.previewSrc.toString() !== ""      // viii-psstore: the focused wallpaper, full screen
             ghost: !win.settingsOpen && settings.reveal < 0.01
-            newsImg: home.newsSrc
+            newsImg: store.previewSrc
         }
 
         Item {
@@ -379,7 +397,7 @@ PanelWindow {
                 opacity: Math.min(1, win.intro * 2.5) * (1 - settings.reveal) * (1 - win.launchT) * (1 - home.navT)   // viii-header
                 y: -12 * home.navT
                 visible: opacity > 0.01
-                onTabClicked: index => { win.page = index; win.tabsFocus = false; }
+                onTabClicked: index => { win.page = index - 1; win.tabsFocus = false; }
                 onSettingsClicked: win.openSettings()
                 onHistoryClicked: win.openHistory()
                 onSearchClicked: win.openSearch()
@@ -392,8 +410,9 @@ PanelWindow {
                 intro: win.intro
                 shown: win.shown
                 focused: win.ringFocus
-                opacity: (1 - win.pageT) * (1 - settings.reveal) * (1 - win.launchT)
-                y: win.vOff - 26 * win.pageT - 18 * settings.reveal
+                opacity: (1 - Math.abs(win.pageT)) * (1 - settings.reveal) * (1 - win.launchT)
+                x: 48 * Math.max(0, -win.pageT)                 // viii-psstore: slides away to the right when the Wallstore arrives
+                y: win.vOff - 26 * Math.max(0, win.pageT) - 18 * settings.reveal
                 scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
@@ -407,18 +426,25 @@ PanelWindow {
                 focused: win.ringFocus
                 width: parent.width
                 height: parent.height
-                opacity: win.pageT * (1 - settings.reveal) * (1 - win.launchT)
-                y: 26 * (1 - win.pageT) - 18 * settings.reveal
+                opacity: Math.max(0, win.pageT) * (1 - settings.reveal) * (1 - win.launchT)
+                y: 26 * (1 - Math.max(0, win.pageT)) - 18 * settings.reveal
                 scale: 1 - 0.025 * settings.reveal
                 visible: opacity > 0.01
                 onLaunched: (entry, x, y, w, h) => win.launch(entry, x, y, w, h)
             }
 
-            WallstorePage {
+            // viii-psstore: the Wallstore tab (page -1). It slides in from the left when you press L1 on Home.
+            StorePage {
                 id: store
-                anchors.fill: parent
-                open: win.storeOpen
-                onCloseRequested: win.storeOpen = false
+                width: parent.width
+                height: parent.height
+                shown: win.shown
+                active: win.page === -1
+                focused: win.ringFocus && win.page === -1
+                opacity: Math.max(0, -win.pageT) * (1 - settings.reveal) * (1 - win.launchT)
+                x: -48 * (1 - Math.max(0, -win.pageT))
+                y: win.vOff - 18 * settings.reveal
+                visible: opacity > 0.01
             }
 
             NotifHistoryPage {

@@ -22,19 +22,27 @@ Item {
 
     SystemClock { id: clk; precision: SystemClock.Minutes }
 
+    // viii-psstore: icon tabs, like the PS5's April 2026 home screen (Wallstore | Home | Library). The current tab also
+    // shows its name. Tab i is page i - 1 (-1 Wallstore, 0 Home, 1 Library). Tab / Shift+Tab (or PageDown / PageUp) do what
+    // R1 / L1 do on the console.
     Row {
         x: 54
         y: 38
-        spacing: 10
+        spacing: 6
         Repeater {
-            model: ["Apps", "Library"]
+            model: [
+                { icon: "\uf290", label: "Wallstore" },
+                { icon: "\uf11b", label: "Home" },
+                { icon: "\uf00a", label: "Library" }
+            ]
             delegate: Item {
                 id: tab
-                required property string modelData
+                required property var modelData
                 required property int index
-                readonly property bool cur: root.page === index
-                width: lbl.width + 36
+                readonly property bool cur: root.page === index - 1
+                width: 14 + 22 + (cur ? 8 + lbl.implicitWidth : 0) + 14
                 height: 42
+                Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
 
                 Rectangle {
                     anchors.fill: parent
@@ -44,19 +52,31 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
                 Txt {
-                    id: lbl
-                    anchors.centerIn: parent
-                    text: tab.modelData
-                    font.pixelSize: 21
-                    font.weight: tab.cur ? Font.Bold : Font.Medium
+                    x: 14
+                    width: 22
+                    horizontalAlignment: Text.AlignHCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: tab.modelData.icon
+                    font.family: Theme.iconFont
+                    font.pixelSize: 20
                     color: tab.cur ? Theme.fg : Theme.fgDim
                 }
+                Txt {
+                    id: lbl
+                    x: 14 + 22 + 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: tab.modelData.label
+                    font.pixelSize: 19
+                    font.weight: Font.Bold
+                    opacity: tab.cur ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 220 } }
+                }
                 Rectangle {
-                    x: (parent.width - width) / 2
+                    x: 14
                     y: parent.height - 2
                     height: 3
                     radius: 1.5
-                    width: tab.cur ? lbl.width : 0
+                    width: tab.cur ? parent.width - 28 : 0
                     color: Theme.fg
                     Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.out } }
                 }
