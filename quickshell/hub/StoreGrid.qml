@@ -105,7 +105,7 @@ Item {
         ? (Wall.scanFailed ? "Can\u2019t read the wallpaper folder" : (Wall.scanned ? "No wallpapers yet" : "Looking for wallpapers"))
         : (News.busy ? "Getting today\u2019s news" : "No news yet")
     readonly property string emptyText: isWall
-        ? (Wall.scanned ? "Add jpg, png or webp images to ~/Pictures/Wallpapers" : "")
+        ? (Wall.scanned ? "Add jpg, png or webp images to " + Wall.prettyDir(Wall.dir) : "")
         : (News.busy ? "Linux and PlayStation stories are on their way."
                      : (News.failed ? "Could not reach the news feeds. It will try again in a few minutes." : "Stories appear here once you are online."))
 

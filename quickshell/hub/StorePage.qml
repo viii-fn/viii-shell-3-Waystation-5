@@ -8,7 +8,7 @@ import "../core"
 //  * The focused wallpaper is previewed full screen behind the page after a short dwell: the equivalent of the store's
 //    trailer that starts playing on the highlighted tile. Hub feeds `previewSrc` into Backdrop's picture layer.
 //  * Tags and a one-line description under the focused tile, and a "Browse by collection" ribbon (the console's
-//    "browse by mood or genre"): All, New, Recently used, then one chip per sub-folder of ~/Pictures/Wallpapers.
+//    "browse by mood or genre"): All, New, Recently used, then one chip per sub-folder of the configured wallpaper folder.
 //  * Typing searches. Enter sets the wallpaper (the whole UI re-themes from it).
 //
 // Performance (2 GB RAM): nothing is computed or decoded while the tab is not on screen (`live`); the carousel keeps only
@@ -479,8 +479,8 @@ Item {
         }
         Txt {
             y: 46
-            text: root.scanFailed ? "Check that ~/Pictures/Wallpapers exists, then press Enter to retry"
-                : root.folderEmpty ? "Add jpg, png or webp images to ~/Pictures/Wallpapers, then press Enter"
+            text: root.scanFailed ? "Check that " + Wall.prettyDir(Wall.dir) + " exists, then press Enter to retry"
+                : root.folderEmpty ? "Add jpg, png or webp images to " + Wall.prettyDir(Wall.dir) + ", then press Enter"
                 : "Backspace to edit, Esc to clear the search"
             font.pixelSize: 16
             color: Theme.fgDim
