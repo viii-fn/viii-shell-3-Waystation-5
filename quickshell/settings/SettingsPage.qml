@@ -344,6 +344,7 @@ FocusScope {
                 { title: "Video Output", rows: rowsOr(mons, "No display information") },
                 { title: "Wallpaper", rows: [
                     { title: "Change Wallpaper", desc: "Browse and apply wallpapers in Wallstore.", action: "wallpaper", kind: "action" },
+                    { title: "Wallpaper Folder", desc: "Where the Wallstore looks for images.", action: "wallpaper-dir", kind: "action" },
                     { title: "Current Wallpaper", action: "wallpaper-name", kind: "info" } ] } ];
         }
         case "accessories": {
@@ -418,6 +419,7 @@ FocusScope {
         case "keyboard": return kbName(kbLayout);
         case "cursor": return Quickshell.env("XCURSOR_THEME") || "default";
         case "wallpaper-name": return Wall.name(Wall.current) || "None";
+        case "wallpaper-dir": return Wall.prettyDir(Wall.dir);
         case "shot-dir": return "Pictures/Screenshots";
         case "restart":
         case "poweroff": return armed === action ? "Press Enter to confirm" : "";
@@ -496,6 +498,7 @@ FocusScope {
 
     function submitWifiPassword() {
         if (promptKind === "name") { submitName(); return; }
+        if (promptKind === "wallpaper-dir") { submitWallpaperDir(); return; }
         if (!pendingNetwork || wifiPassword.length < 1) {
             setStatus("Enter the Wi-Fi password first", "error");
             return;
@@ -689,6 +692,23 @@ FocusScope {
         setStatus("Profile name saved", "success");
     }
 
+    function openDirPrompt() {
+        promptKind = "wallpaper-dir";
+        wifiPassword = Wall.dir;
+        passwordPrompt = true;
+        passwordField.forceActiveFocus();
+        passwordField.selectAll();
+    }
+
+    function submitWallpaperDir() {
+        const d = wifiPassword.trim();
+        passwordPrompt = false;
+        wifiPassword = "";
+        forceActiveFocus();
+        Wall.setDir(d);
+        setStatus(d === "" ? "Wallpaper folder reset to the default" : "Wallpaper folder set", "success");
+    }
+
     function runPower(action) {
         if (action === "restart" || action === "poweroff") {
             if (armed !== action) {
@@ -780,6 +800,7 @@ FocusScope {
             setStatus("Profile picture removed", "success");
             break;
         case "wallpaper": wallstoreRequested(); break;
+        case "wallpaper-dir": openDirPrompt(); break;
         case "history": closeRequested(); Desk.openHistory(); break;
         case "history-clear": Notifs.clear(); setStatus("Notification history cleared", "success"); break;
         case "shot": closeRequested(); Desk.openShot(); break;
@@ -1313,13 +1334,17 @@ FocusScope {
         scale: 0.92 + 0.08 * root.promptPop
         SettingsText {
             x: 30; y: 26
-            text: root.promptKind === "name" ? "Profile Name" : "Connect to " + (root.pendingNetwork ? root.pendingNetwork.name : "Wi-Fi")
+            text: root.promptKind === "name" ? "Profile Name"
+                : (root.promptKind === "wallpaper-dir" ? "Wallpaper Folder"
+                : "Connect to " + (root.pendingNetwork ? root.pendingNetwork.name : "Wi-Fi"))
             font.pixelSize: 22
             font.weight: Font.DemiBold
         }
         SettingsText {
             x: 30; y: 66
-            text: root.promptKind === "name" ? "Enter the name to show in the shell" : "Enter the network password"
+            text: root.promptKind === "name" ? "Enter the name to show in the shell"
+                : (root.promptKind === "wallpaper-dir" ? "Folder to browse. Leave empty for the default assets folder."
+                : "Enter the network password")
             font.pixelSize: 14
             color: Theme.fgDim
         }
@@ -1343,7 +1368,7 @@ FocusScope {
                 font.family: Theme.fontFamily
                 font.pixelSize: 16
                 text: root.wifiPassword
-                echoMode: root.promptKind === "name" ? TextInput.Normal : TextInput.Password
+                echoMode: (root.promptKind === "name" || root.promptKind === "wallpaper-dir") ? TextInput.Normal : TextInput.Password
                 onTextChanged: root.wifiPassword = text
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
@@ -1360,7 +1385,9 @@ FocusScope {
         }
         SettingsText {
             x: 30; y: 184
-            text: root.promptKind === "name" ? "Enter  ·  Save          Esc  ·  Cancel" : "Enter  ·  Connect          Esc  ·  Cancel"
+            text: root.promptKind === "name" ? "Enter  ·  Save          Esc  ·  Cancel"
+                : (root.promptKind === "wallpaper-dir" ? "Enter  ·  Save          Esc  ·  Cancel"
+                : "Enter  ·  Connect          Esc  ·  Cancel")
             font.pixelSize: 13
             color: Theme.fgDim
         }
