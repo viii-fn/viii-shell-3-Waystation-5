@@ -335,8 +335,8 @@ Item {
             Txt {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 44
-                text: root.scanFailed ? "Check that ~/Pictures/Wallpapers exists, then retry"
-                    : root.folderEmpty ? "Add jpg, png or webp images to ~/Pictures/Wallpapers"
+                text: root.scanFailed ? "Check that " + Wall.prettyDir(Wall.dir) + " exists, then retry"
+                    : root.folderEmpty ? "Add jpg, png or webp images to " + Wall.prettyDir(Wall.dir)
                     : "Backspace to edit, Esc to clear the search"
                 font.pixelSize: 15
                 color: Theme.fgDim

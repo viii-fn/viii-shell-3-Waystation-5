@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # viii-theme [image | --random] [--shell-only]
 #   image        theme everything from this wallpaper (shell + kitty + fish + GTK)
-#   --random     pick a random file from ~/Pictures/Wallpapers
+#   --random     pick a random file from the wallpaper folder (assets/ unless changed in Settings)
 #   --shell-only only the shell colours (~/.cache/viii/theme.json)
 #   (no image)   reuse the last wallpaper
 set -u
 P="$HOME/viii-shell-3"
-W="$HOME/Pictures/Wallpapers"
+W="$P/assets"
+D="$HOME/.config/viii/wallpaper-dir"
+if [ -s "$D" ]; then
+  W="$(head -n1 "$D")"
+  case "$W" in "~/"*) W="$HOME/${W#\~/}" ;; esac
+fi
+[ -n "$W" ] || W="$P/assets"
 S="$HOME/.local/state/viii"
 mkdir -p "$S" "$HOME/.cache/viii" "$HOME/.config/kitty" "$HOME/.config/fish/conf.d" "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"
 
