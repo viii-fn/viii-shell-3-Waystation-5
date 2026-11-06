@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# viii: tiny control script for viii-shell-3
+# Instances are matched by their command line: "qs -c viii" or "quickshell -c viii".
+PAT='(^|/)(qs|quickshell)( .*)? -c viii( |$)'
+
+count() { pgrep -fc "$PAT" 2>/dev/null || true; }
+
+# first-run setup (Waystation): its own Quickshell instance, only while the flag file is missing   # viii-firstrun-v2
+SETUP_FLAG="$HOME/.local/state/viii/setup-done"
+SETUP_LOG="$HOME/.cache/viii/setup-start.log"
+SETUP_PAT='qs.*setup/shell\.qml|quickshell.*setup/shell\.qml'
+setup_qml() {   # the installed copy first, then the project folder
+  local c
+  for c in "$HOME/.config/quickshell/viii/setup/shell.qml" "$HOME/viii-shell-3/quickshell/setup/shell.qml"; do
+    if [ -f "$c" ]; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+SETUP_QML="$(setup_qml || true)"
+setup_running() { pgrep -f "$SETUP_PAT" >/dev/null 2>&1; }
+start_setup() {
+  mkdir -p "$(dirname "$SETUP_LOG")"
+  if [ -f "$SETUP_FLAG" ]; then echo "$(date +%T) skipped: $SETUP_FLAG exists (viii setup reset to run it again)" > "$SETUP_LOG"; return 0; fi
+  local q
+  q="$(setup_qml)" || { echo "$(date +%T) no setup/shell.qml found in ~/.config/quickshell/viii or ~/viii-shell-3/quickshell" > "$SETUP_LOG"; echo "viii: first-run setup files not found (see $SETUP_LOG)" >&2; return 0; }
+  if setup_running; then return 0; fi
+  echo "$(date +%T) starting: $q" > "$SETUP_LOG"
+  qs -p "$q" -d >> "$SETUP_LOG" 2>&1 || true
+  sleep 1.5
+  if ! setup_running; then
+    echo "--- the daemon did not stay up; foreground run follows (QML errors show here) ---" >> "$SETUP_LOG"
+    timeout 4 qs -p "$q" >> "$SETUP_LOG" 2>&1 || true
+    echo "viii: first-run setup failed to start; errors are in $SETUP_LOG" >&2
+  fi
+  return 0
+}
+stop_setup() { pkill -f "$SETUP_PAT" >/dev/null 2>&1; }
+
+# Kill EVERY running instance, wait until they are gone, then force-kill leftovers.
+stop_all() {
+  qs kill -c viii >/dev/null 2>&1
+  pkill -f "$PAT" >/dev/null 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    [ "$(count)" = "0" ] && return 0
+    sleep 0.25
+  done
+  pkill -9 -f "$PAT" >/dev/null 2>&1
+  sleep 0.3
+}
+
+case "${1:-}" in
+  start)        stop_all; qs -c viii -d; start_setup ;;
+  stop|kill)    stop_all; stop_setup; echo "stopped (instances left: $(count))" ;;
+  restart)      stop_all; qs -c viii -d; start_setup ;;
+  log)          if [ "${2:-}" = "setup" ]; then exec qs log -p "$SETUP_QML"; else exec qs log -c viii; fi ;;
+  setup)
+    case "${2:-status}" in
+      status) if [ -f "$SETUP_FLAG" ]; then echo "first-run setup: done ($(cat "$SETUP_FLAG" 2>/dev/null))"; else echo "first-run setup: pending (runs on the next start)"; fi ;;
+      run)    rm -f "$SETUP_FLAG"; stop_setup; start_setup ;;
+      reset)  rm -f "$SETUP_FLAG"; echo "setup will run again on the next: viii start" ;;
+      skip)   mkdir -p "$(dirname "$SETUP_FLAG")"; date -u +%FT%TZ > "$SETUP_FLAG"; stop_setup; echo "setup marked as done" ;;
+      *)      echo "usage: viii setup status | run | reset | skip" ;;
+    esac ;;
+  doctor)
+    n="$(count)"
+    echo "== running shell instances (want: 1)"
+    echo "  $n"
+    [ "$n" -gt 1 ] 2>/dev/null && echo "  WARNING: duplicates. Run: viii restart"
+    echo
+    echo "== shortcuts the shell registered with Hyprland (want: psDown, psUp, launcher, briUp, briDown)"
+    hyprctl globalshortcuts 2>&1 | grep -i 'shell' || echo "  none found: is the shell running? (viii start)"
+    echo
+    echo "== PS-button binds (hyprctl binds hides the global's name, so check the config + registration)"
+    if grep -q 'shell:psDown' "$HOME/.config/hypr/viii.lua" 2>/dev/null && grep -q 'shell:psUp' "$HOME/.config/hypr/viii.lua" 2>/dev/null; then
+      echo "  ok: press and release binds are in hypr/viii.lua"
+    else
+      echo "  MISSING: shell:psDown / shell:psUp not found in ~/.config/hypr/viii.lua"
+    fi
+    if hyprctl globalshortcuts 2>&1 | grep -q 'psDown' && hyprctl globalshortcuts 2>&1 | grep -q 'psUp'; then
+      echo "  ok: shell registered psDown and psUp"
+    else
+      echo "  WARNING: shell has not registered psDown/psUp (is it running?)"
+    fi
+    echo
+    echo "== Hyprland config errors"
+    hyprctl configerrors 2>&1
+    echo
+    echo "== hypr lua log (empty = fine)"
+    cat "$HOME/.cache/viii/hypr-lua.log" 2>/dev/null || echo "  no log"
+    ;;
+  *)            echo "usage: viii start | stop | restart | log [setup] | doctor | setup status|run|reset|skip" ;;
+esac

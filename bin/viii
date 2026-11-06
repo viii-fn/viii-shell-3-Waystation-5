@@ -5,13 +5,13 @@ PAT='(^|/)(qs|quickshell)( .*)? -c viii( |$)'
 
 count() { pgrep -fc "$PAT" 2>/dev/null || true; }
 
-# first-run setup (Waystation): its own Quickshell instance, only while the flag file is missing   # viii-firstrun-v2
+# first-run setup (Waystation): its own Quickshell instance, only while the flag file is missing   # viii-firstrun-v3
 SETUP_FLAG="$HOME/.local/state/viii/setup-done"
 SETUP_LOG="$HOME/.cache/viii/setup-start.log"
-SETUP_PAT='qs.*setup/shell\.qml|quickshell.*setup/shell\.qml'
-setup_qml() {   # the installed copy first, then the project folder
+SETUP_PAT='qs.*setup-shell\.qml|quickshell.*setup-shell\.qml'
+setup_qml() {   # the installed copy first, then the project folder (the file lives in the quickshell/ root)
   local c
-  for c in "$HOME/.config/quickshell/viii/setup/shell.qml" "$HOME/viii-shell-3/quickshell/setup/shell.qml"; do
+  for c in "$HOME/.config/quickshell/viii/setup-shell.qml" "$HOME/viii-shell-3/quickshell/setup-shell.qml"; do
     if [ -f "$c" ]; then echo "$c"; return 0; fi
   done
   return 1
@@ -22,7 +22,7 @@ start_setup() {
   mkdir -p "$(dirname "$SETUP_LOG")"
   if [ -f "$SETUP_FLAG" ]; then echo "$(date +%T) skipped: $SETUP_FLAG exists (viii setup reset to run it again)" > "$SETUP_LOG"; return 0; fi
   local q
-  q="$(setup_qml)" || { echo "$(date +%T) no setup/shell.qml found in ~/.config/quickshell/viii or ~/viii-shell-3/quickshell" > "$SETUP_LOG"; echo "viii: first-run setup files not found (see $SETUP_LOG)" >&2; return 0; }
+  q="$(setup_qml)" || { echo "$(date +%T) no setup-shell.qml found in ~/.config/quickshell/viii or ~/viii-shell-3/quickshell" > "$SETUP_LOG"; echo "viii: first-run setup files not found (see $SETUP_LOG)" >&2; return 0; }
   if setup_running; then return 0; fi
   echo "$(date +%T) starting: $q" > "$SETUP_LOG"
   qs -p "$q" -d >> "$SETUP_LOG" 2>&1 || true
