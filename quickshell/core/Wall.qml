@@ -3,14 +3,19 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Wallpapers: the list in ~/Pictures/Wallpapers, the current one, and "apply" (= viii-theme <file>,
-// which re-themes the whole UI from it). The wallpaper itself is drawn by wall/WallpaperLayer.qml.
+// Wallpapers: the list in the configured folder (the project's assets/ until the user picks another
+// one in Settings), the current one, and "apply" (= viii-theme <file>, which re-themes the whole UI
+// from it). The wallpaper itself is drawn by wall/WallpaperLayer.qml.
 // No Behavior in here (Qt 6.12 singleton crash).
 Singleton {
     id: root
 
     readonly property string home: Quickshell.env("HOME")
-    readonly property string dir: home + "/Pictures/Wallpapers"
+    // assets/ lives next to quickshell/ in the project. Resolve it once (below) so the `..` in
+    // ~/.config/quickshell/viii/../assets cannot be folded the wrong way by a path normaliser.
+    property string defaultDir: Quickshell.shellDir + "/../assets"
+    property string customDir: ""            // persisted in ~/.config/viii/wallpaper-dir; "" = default
+    readonly property string dir: customDir !== "" ? customDir : defaultDir
     property var files: []
     property string current: ""
     property bool busy: false
@@ -25,6 +30,29 @@ Singleton {
         const b = p.split("/").pop();
         const i = b.lastIndexOf(".");
         return i > 0 ? b.slice(0, i) : b;
+    }
+    function prettyDir(p) {
+        if (!p) return "";
+        if (p === home) return "~";
+        if (p.indexOf(home + "/") === 0) return "~" + p.slice(home.length);
+        return p;
+    }
+    function expandDir(p) {
+        let d = String(p || "").trim();
+        if (d === "~") d = home;
+        else if (d.indexOf("~/") === 0) d = home + d.slice(1);
+        return d;
+    }
+    // "" restores the default (the project's assets/ folder).
+    function setDir(p) {
+        const d = expandDir(p);
+        customDir = d;
+        Quickshell.execDetached(["sh", "-c",
+            "mkdir -p \"$HOME/.config/viii\" && printf '%s\\n' \"$1\" > \"$HOME/.config/viii/wallpaper-dir\"",
+            "sh", d]);
+        scanned = false;
+        scanFailed = false;
+        refresh();
     }
     function refresh() { if (!lister.running) { scanFailed = false; lister.running = true; } }
     function apply(path) {
@@ -71,6 +99,36 @@ Singleton {
         }
     }
 
+    // The folder chosen in Settings (one line). Missing or empty = the default assets/ folder.
+    FileView {
+        path: root.home + "/.config/viii/wallpaper-dir"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.customDir = text().trim()
+    }
+
+    // Canonical path of the default folder, so the UI shows a clean path even though the shell
+    // runs from the ~/.config/quickshell/viii symlink.
+    Process {
+        id: canon
+        command: ["readlink", "-f", Quickshell.shellDir + "/../assets"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const p = this.text.trim();
+                if (p !== "") root.defaultDir = p;
+            }
+        }
+    }
+
+    onDirChanged: {
+        root.files = [];
+        root.scanned = false;
+        root.scanFailed = false;
+        if (lister.running) lister.running = false;
+        restart.start();
+    }
+    Timer { id: restart; interval: 0; onTriggered: root.refresh() }
+
     FileView {
         path: root.home + "/.local/state/viii/wallpaper"
         watchChanges: true
@@ -102,5 +160,5 @@ Singleton {
         return out;
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: { canon.running = true; refresh(); }
 }
