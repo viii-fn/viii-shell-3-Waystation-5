@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+# viii-deps: installs what Waystation (viii-shell-3) needs. Arch, Fedora and Debian-family distros.
+#
+#   viii-deps --info          what was detected (key=value lines); changes nothing
+#   viii-deps --install       install the missing dependencies, one package at a time
+#   viii-deps --full-update   full system upgrade, then a second install pass
+#   add --dry-run to --install / --full-update: runs every check but never calls the package manager
+#
+# The first-run setup (quickshell/setup) reads the lines that start with "@":
+#   @plan id|label|state     one per dependency (state: have | pending)
+#   @pkg  id|state|note      state: installing | ok | missing | failed
+#   @progress 0..1           (-1 = unknown length)     @phase text    @msg text    @auth fail|need
+#
+# Administrator access: as root nothing is needed. Otherwise sudo is used, with the password taken from the
+# VIII_PW environment variable (read once, then unset) or, without it, "sudo -n" (NOPASSWD / cached).
+# Exit codes: 0 all required packages present, 10 some required packages are missing, 3 unsupported distro,
+#             77 wrong password, 78 password needed, 20 full update failed.
+set -u
+exec 2>&1
+
+DRY=0
+MODE=""
+for a in "$@"; do
+    case "$a" in
+        --info|--install|--full-update) MODE="$a" ;;
+        --dry-run) DRY=1 ;;
+        *) echo "usage: viii-deps --info | --install | --full-update [--dry-run]"; exit 2 ;;
+    esac
+done
+[[ -n "$MODE" ]] || { echo "usage: viii-deps --info | --install | --full-update [--dry-run]"; exit 2; }
+
+PW="${VIII_PW-}"
+unset VIII_PW
+
+# ------------------------------------------------------------------ the dependency table
+# id|label|commands that prove it is installed|arch package|fedora package|debian package|required (1) or optional (0)
+# Package names are best effort: each one is checked against your repositories before installing, so a wrong or
+# missing name is reported ("not in your repositories"), never a failed install.
+DEPS=(
+    "hyprland|Hyprland|Hyprland hyprctl|hyprland|hyprland|hyprland|1"
+    "quickshell|Quickshell|qs quickshell|quickshell|quickshell|quickshell|1"
+    "matugen|matugen|matugen|matugen|matugen|matugen|1"
+    "resvg|resvg|resvg|resvg|resvg|resvg|1"
+    "imagemagick|ImageMagick|magick convert|imagemagick|ImageMagick|imagemagick|1"
+    "brightnessctl|brightnessctl|brightnessctl|brightnessctl|brightnessctl|brightnessctl|1"
+    "networkmanager|NetworkManager|nmcli|networkmanager|NetworkManager|network-manager|1"
+    "hyprlock|hyprlock|hyprlock|hyprlock|hyprlock|hyprlock|1"
+    "kitty|kitty|kitty|kitty|kitty|kitty|1"
+    "fish|fish|fish|fish|fish|fish|1"
+    "starship|starship|starship|starship|starship|starship|1"
+    "python|Python 3|python3|python|python3|python3|1"
+    "libnotify|libnotify|notify-send|libnotify|libnotify|libnotify-bin|1"
+    "recorder|gpu-screen-recorder|gpu-screen-recorder|gpu-screen-recorder|gpu-screen-recorder||0"
+    "inter|Inter font|font:Inter|inter-font|rsms-inter-fonts|fonts-inter|0"
+    "nerdsym|Nerd Font symbols|font:Symbols Nerd Font|ttf-nerd-fonts-symbols|||0"
+)
+
+# ------------------------------------------------------------------ distro
+FAMILY=unknown; PM=""; PRETTY=""
+detect() {
+    local id="" like=""
+    if [[ -r /etc/os-release ]]; then
+        id="$(. /etc/os-release; printf '%s' "${ID-}")"
+        like="$(. /etc/os-release; printf '%s' "${ID_LIKE-}")"
+        PRETTY="$(. /etc/os-release; printf '%s' "${PRETTY_NAME-}")"
+    fi
+    [[ -n "$PRETTY" ]] || PRETTY="${id:-unknown}"
+    case " $id $like " in
+        *" arch "*)   FAMILY=arch;   command -v pacman  >/dev/null 2>&1 && PM=pacman  ;;
+        *" fedora "*) FAMILY=fedora; command -v dnf     >/dev/null 2>&1 && PM=dnf     ;;
+        *" debian "*|*" ubuntu "*) FAMILY=debian; command -v apt-get >/dev/null 2>&1 && PM=apt ;;
+    esac
+    [[ -n "$PM" ]] || FAMILY=unknown
+}
+
+# ------------------------------------------------------------------ helpers
+is_root() { [[ "$(id -u)" == 0 ]]; }
+
+# auth: root | no (sudo works without a password) | yes (a password is needed) | nosudo
+auth_mode() {
+    if is_root; then echo root; return; fi
+    command -v sudo >/dev/null 2>&1 || { echo nosudo; return; }
+    if sudo -n true >/dev/null 2>&1; then echo no; else echo yes; fi
+}
+
+# run a command as root; output (carriage returns turned into lines) goes to stdout
+as_root() {
+    if (( DRY )); then echo "[dry-run] would run as root: $*"; return 0; fi
+    (
+        set -o pipefail
+        if is_root; then "$@" 2>&1
+        elif [[ -n "$PW" ]]; then printf '%s\n' "$PW" | sudo -S -p '' "$@" 2>&1
+        else sudo -n "$@" 2>&1
+        fi | tr '\r' '\n'
+    )
+}
+
+have_cmd() { # have_cmd "cmd1 cmd2": true when any of them is on PATH
+    local c
+    for c in $1; do command -v "$c" >/dev/null 2>&1 && return 0; done
+    return 1
+}
+have_dep() { # a command list, or "font:Name" (font names may contain spaces)
+    local chk="$1"
+    if [[ "$chk" == font:* ]]; then fc-list 2>/dev/null | grep -qi -- "${chk#font:}"; return; fi
+    have_cmd "$chk"
+}
+
+pkg_available() {
+    local p="$1"
+    case "$FAMILY" in
+        arch)   pacman -Si "$p" >/dev/null 2>&1 ;;
+        fedora) dnf -q info "$p" >/dev/null 2>&1 ;;
+        debian) local c; c="$(apt-cache policy "$p" 2>/dev/null | awk '/Candidate:/ {print $2}')"; [[ -n "$c" && "$c" != "(none)" ]] ;;
+        *) return 1 ;;
+    esac
+}
+
+pkg_install() {
+    local p="$1"
+    case "$FAMILY" in
+        arch)   as_root pacman -S --needed --noconfirm "$p" ;;
+        fedora) as_root dnf install -y "$p" ;;
+        debian) as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y "$p" ;;
+    esac
+}
+
+hint_for() {
+    case "$FAMILY" in
+        arch)   echo "Missing packages are usually in the AUR: install them with your AUR helper (for example: paru -S quickshell matugen)." ;;
+        fedora) echo "Missing packages usually come from a third-party repository (COPR). Add the one you trust, then run the setup again with: viii setup reset" ;;
+        debian) echo "Missing packages are not packaged for this release. Build them from source (matugen: cargo install matugen) or use a newer release." ;;
+    esac
+}
+
+# ------------------------------------------------------------------ modes
+do_info() {
+    detect
+    local req_missing=0 row id label chk req
+    for row in "${DEPS[@]}"; do
+        IFS='|' read -r id label chk _ _ _ req <<<"$row"
+        [[ "$req" == 1 ]] || continue
+        have_dep "$chk" || req_missing=$((req_missing + 1))
+    done
+    echo "family=$FAMILY"
+    echo "pretty=$PRETTY"
+    echo "pm=${PM:-none}"
+    echo "auth=$(auth_mode)"
+    echo "missing=$req_missing"
+}
+
+check_auth() { # returns 0 when administrator access works
+    is_root && return 0
+    command -v sudo >/dev/null 2>&1 || { echo "@msg sudo is not installed and you are not root: install the packages by hand."; return 3; }
+    (( DRY )) && return 0
+    if [[ -n "$PW" ]]; then
+        if printf '%s\n' "$PW" | sudo -S -p '' true >/dev/null 2>&1; then return 0; fi
+        echo "@auth fail"; return 77
+    fi
+    sudo -n true >/dev/null 2>&1 && return 0
+    echo "@auth need"; return 78
+}
+
+do_install() {
+    echo "@phase Checking your system"
+    echo "@progress 0.02"
+    detect
+    if [[ "$FAMILY" == unknown ]]; then
+        echo "@msg Waystation's automatic installer supports Arch, Fedora and Debian-based systems (this one is: $PRETTY)."
+        echo "@msg Install by hand: quickshell matugen resvg imagemagick brightnessctl networkmanager hyprlock kitty fish starship python libnotify"
+        return 3
+    fi
+    check_auth || return $?
+
+    # plan: tell the UI every dependency up front
+    local row id label chk apkg fpkg dpkg req
+    local ids=()
+    for row in "${DEPS[@]}"; do
+        IFS='|' read -r id label chk apkg fpkg dpkg req <<<"$row"
+        if have_dep "$chk"; then echo "@plan $id|$label|have"; else echo "@plan $id|$label|pending"; ids+=("$row"); fi
+    done
+
+    if [[ "$FAMILY" == debian ]]; then
+        echo "@phase Refreshing package lists"
+        as_root apt-get update || echo "@msg The package lists could not be refreshed; continuing with what is known."
+    fi
+    echo "@progress 0.12"
+
+    local n=${#ids[@]} i=0 pkg miss_req=0 miss_any=0
+    echo "@phase Installing"
+    for row in ${ids[@]+"${ids[@]}"}; do
+        IFS='|' read -r id label chk apkg fpkg dpkg req <<<"$row"
+        case "$FAMILY" in arch) pkg="$apkg" ;; fedora) pkg="$fpkg" ;; debian) pkg="$dpkg" ;; esac
+        i=$((i + 1))
+        if [[ -z "$pkg" ]] || ! pkg_available "$pkg"; then
+            echo "@pkg $id|missing|not in your repositories"
+            miss_any=$((miss_any + 1)); [[ "$req" == 1 ]] && miss_req=$((miss_req + 1))
+        else
+            echo "@pkg $id|installing|$pkg"
+            if pkg_install "$pkg"; then
+                echo "@pkg $id|ok|$pkg"
+            else
+                echo "@pkg $id|failed|$pkg"
+                miss_any=$((miss_any + 1)); [[ "$req" == 1 ]] && miss_req=$((miss_req + 1))
+            fi
+        fi
+        # progress runs from 0.12 to 0.98 across the packages that needed work
+        awk -v i="$i" -v n="$n" 'BEGIN { printf "@progress %.3f\n", 0.12 + 0.86 * i / (n > 0 ? n : 1) }'
+    done
+    echo "@progress 1"
+    if (( miss_any > 0 )); then
+        echo "@msg $(hint_for)"
+        if [[ "$FAMILY" == arch ]]; then
+            echo "@msg If every package says \"not in your repositories\", your package databases are probably out of date: the full update on the next screen refreshes them."
+        fi
+    fi
+    (( miss_req > 0 )) && return 10
+    return 0
+}
+
+do_full_update() {
+    echo "@phase Updating your system"
+    echo "@progress -1"
+    detect
+    [[ "$FAMILY" == unknown ]] && { echo "@msg Unsupported distribution."; return 3; }
+    check_auth || return $?
+    local rc=0
+    case "$FAMILY" in
+        arch)   as_root pacman -Syu --noconfirm || rc=$? ;;
+        fedora) as_root dnf upgrade -y --refresh || rc=$? ;;
+        debian) as_root apt-get update && as_root env DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confold full-upgrade || rc=$? ;;
+    esac
+    (( rc != 0 )) && { echo "@msg The full update did not finish (exit code $rc)."; return 20; }
+    echo "@msg Full update finished. Checking the dependencies once more."
+    do_install
+}
+
+case "$MODE" in
+    --info)        do_info; exit 0 ;;
+    --install)     do_install; exit $? ;;
+    --full-update) do_full_update; exit $? ;;
+esac

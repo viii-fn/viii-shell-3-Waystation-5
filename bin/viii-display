@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""viii-display: read-only report of the connected displays, for the first-run setup. Changes nothing.
+
+Prints a JSON list, one entry per monitor Hyprland knows:
+  { name, description, width, height, refresh, scale, hdr, hdrText, source }
+  hdr      "supported" | "unsupported" | "unknown"
+  source   where the HDR answer came from: "hyprland" (the compositor says so), "edid" (the display's own
+           capability data, /sys/class/drm/*/edid) or "none" (could not be read: virtual machines often have none)
+Exit 0 when Hyprland answered, 1 when it did not (the list is then empty).
+
+VIII_DRM_DIR overrides /sys/class/drm (used by tests).
+"""
+import glob, json, os, subprocess, sys
+
+DRM = os.environ.get("VIII_DRM_DIR") or "/sys/class/drm"
+
+
+def hypr_monitors():
+    try:
+        r = subprocess.run(["hyprctl", "monitors", "-j"], capture_output=True, text=True, timeout=8)
+        if r.returncode != 0:
+            return None
+        data = json.loads(r.stdout)
+        return data if isinstance(data, list) else None
+    except Exception:
+        return None
+
+
+def edid_hdr(blob):
+    """HDR capability from raw EDID bytes: 'hdr10' (PQ), 'hlg', 'none', or None when the data is not a usable EDID.
+    The CTA-861 extension block holds an 'HDR Static Metadata' data block (extended tag 6); its first byte lists
+    the transfer functions the display accepts: bit 2 = SMPTE ST 2084 (PQ / HDR10), bit 3 = HLG."""
+    if len(blob) < 128 or blob[:8] != bytes([0, 255, 255, 255, 255, 255, 255, 0]):
+        return None
+    flags = 0
+    for i in range(1, blob[126] + 1):
+        blk = blob[128 * i:128 * (i + 1)]
+        if len(blk) < 128 or blk[0] != 0x02:          # 0x02 = CTA-861 extension
+            continue
+        end = min(blk[2], 127)
+        pos = 4
+        while pos < end:
+            tag, ln = blk[pos] >> 5, blk[pos] & 0x1F
+            if tag == 7 and ln >= 2 and pos + 2 < 128 and blk[pos + 1] == 6:
+                flags |= blk[pos + 2]
+            pos += ln + 1
+    if flags & 0x04:
+        return "hdr10"
+    if flags & 0x08:
+        return "hlg"
+    return "none"
+
+
+def read_edid(name):
+    for path in sorted(glob.glob(os.path.join(DRM, "card*-" + name, "edid"))):
+        try:
+            with open(path, "rb") as fh:
+                blob = fh.read()
+        except Exception:
+            continue
+        if blob:
+            return blob
+    return b""
+
+
+def describe(m):
+    name = str(m.get("name", ""))
+    kind = edid_hdr(read_edid(name))              # None = unreadable
+    ask = m.get("supportsHDR")                    # newer Hyprland versions report this themselves
+    if isinstance(ask, bool):
+        hdr, source = ("supported" if ask else "unsupported"), "hyprland"
+    elif kind is not None:
+        hdr, source = ("unsupported" if kind == "none" else "supported"), "edid"
+    else:
+        hdr, source = "unknown", "none"
+    if hdr == "supported":
+        text = "Supported (HLG)" if kind == "hlg" else ("Supported (HDR10)" if kind == "hdr10" else "Supported")
+    elif hdr == "unsupported":
+        text = "Not supported"
+    else:
+        text = "Unknown (the display did not report its capabilities)"
+    try:
+        refresh = int(round(float(m.get("refreshRate", 0))))
+    except Exception:
+        refresh = 0
+    return {
+        "name": name,
+        "description": str(m.get("description") or m.get("model") or name),
+        "width": int(m.get("width", 0) or 0),
+        "height": int(m.get("height", 0) or 0),
+        "refresh": refresh,
+        "scale": m.get("scale", 1),
+        "hdr": hdr,
+        "hdrText": text,
+        "source": source,
+    }
+
+
+def main():
+    mons = hypr_monitors()
+    if mons is None:
+        print("[]")
+        return 1
+    print(json.dumps([describe(m) for m in mons if not m.get("disabled")]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

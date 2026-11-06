@@ -37,7 +37,7 @@ end)
 -- surfaces. blur = false is explicit: these layers are not blurred (the compositor
 -- would otherwise run a full-screen blur pass behind them).
 ---------------------------------------------------------------------------
-for _, ns in ipairs({ "viii-hub", "viii-cc", "viii-osd", "viii-wall", "viii-notif", "viii-shot" }) do
+for _, ns in ipairs({ "viii-hub", "viii-cc", "viii-osd", "viii-wall", "viii-notif", "viii-shot", "viii-setup" }) do
     try("layer rules " .. ns, hl.layer_rule, { match = { namespace = ns }, no_anim = true, blur = false })
 end
 
