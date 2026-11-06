@@ -19,7 +19,7 @@ DIR = BASE + "/news"
 IMG = DIR + "/img"
 OUT = DIR + "/news.json"
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0 viii-shell"
-PER_GROUP = 4          # cards per group (Linux / PlayStation), 8 in total
+PER_GROUP = 3          # cards per group (Linux / PlayStation), 6 in total (viii-ps5hub)
 MAX_OG = 8             # at most this many article pages are opened to look for a picture
 DEADLINE = time.time() + 150
 

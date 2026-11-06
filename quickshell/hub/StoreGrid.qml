@@ -184,7 +184,7 @@ Item {
                 Rectangle { anchors.fill: parent; visible: card.has && !card.browse; color: Qt.rgba(0.07, 0.078, 0.098, 1) }
                 Image {
                     anchors.fill: parent
-                    source: card.it ? News.src(card.it.img) : (card.wp !== "" ? Wall.src(card.wp) : "")
+                    source: !card.visible ? "" : (card.it ? News.src(card.it.img) : (card.wp !== "" ? Wall.src(card.wp) : ""))   // viii-ps5hub: no texture while the pane is off screen
                     sourceSize.width: Math.round(Math.max(card.cw, card.ch * 1.8) * 1.15)
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true

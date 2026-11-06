@@ -1,6 +1,6 @@
 # This file contains fish universal variable definitions.
 # VERSION: 3.0
-SETUVAR --export EDITOR:micro
+SETUVAR --export EDITOR:nvim
 SETUVAR fish_color_autosuggestion:\x23a08c8a
 SETUVAR fish_color_command:\x23ffb4ab
 SETUVAR fish_color_comment:\x23a08c8a

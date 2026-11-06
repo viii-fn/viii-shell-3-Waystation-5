@@ -45,8 +45,8 @@ Item {
     // ---- viii-store: Wallstore and Explore take the Welcome path: Down enters (no Open button, no separate
     // page), the tile's icon lifts into the bar, the panes fit the visible screen. Cursor = wCard (0..7). ----
     readonly property bool wall: cur !== null && cur.isWall === true
-    readonly property bool paneOn: explore || wall
-    readonly property bool paneReady: wall || (explore && News.items.length > 0)
+    readonly property bool paneOn: wall
+    readonly property bool paneReady: wall
     signal storeRequested()                       // the "Browse all" pane: open the full Wallstore page
     // A normal application tile: it gets the same focusable content mosaic as Welcome.
     readonly property bool appPage: cur !== null && cur !== undefined && !special && !welcome && !explore
@@ -72,15 +72,17 @@ Item {
     readonly property real rowDim: 0.30            // tune: how much the whole row dims (0..1)
     readonly property real focusY: 240             // tune: top of the card mosaic while it has focus (design px)
     readonly property real restY: 376              // top of the card mosaic at rest (unchanged)
-    // Content card grids. Welcome has 10 cards (two rows); a regular app page has 6
-    // (3 small screen-time cards on top, 3 tall widgets below). Kept in sync with the grids.
-    readonly property var wCol: [0, 0, 1, 1, 2, 2, 0, 1, 2, 2]              // column of each Welcome card
-    readonly property var wMid: [116.5, 304, 54, 241.5, 54, 241.5, 497.5, 497.5, 435, 560]   // vertical centre (design px)
+    // Content card grids. Welcome has 12 cards (viii-ps5hub): 0..5 are the widget band, 6..8 the PlayStation feed and
+    // 9..11 the Linux feed; a regular app page has 6 (3 small screen-time cards on top, 3 tall widgets below).
+    // Kept in sync with the grids.
+    readonly property var wCol: [0, 0, 1, 1, 2, 2, 0, 1, 2, 0, 1, 2]                    // column of each Welcome card
+    readonly property var wMid: [116.5, 304, 116.5, 304, 116.5, 304, 506.5, 506.5, 506.5, 755.5, 755.5, 755.5]   // vertical centre (design px)
     readonly property var aCol: [0, 1, 2, 0, 1, 2]                          // column of each app card
     readonly property var aMid: [54, 54, 54, 247.5, 247.5, 247.5]           // vertical centre (design px)
     readonly property var cCol: root.appPage ? aCol : wCol
     readonly property var cMid: root.appPage ? aMid : wMid
-    readonly property int cCount: root.appPage ? aCol.length : 10
+    readonly property int cCount: root.appPage ? aCol.length : 12
+    function wValid(j) { return !welcome || welcomeGrid.valid(j); }      // viii-ps5hub: a story card only exists when there is a story
     function wNav(dx, dy) {                        // move the card cursor; false = nothing to move to
         const i = Math.max(0, Math.min(cCount - 1, wCard));
         const cx = cMid[i];
@@ -89,7 +91,7 @@ Item {
             if (col < 0 || col > 2) return false;
             let best = -1, bd = 1000000;
             for (let j = 0; j < cCount; j++) {
-                if (cCol[j] !== col) continue;
+                if (cCol[j] !== col || !wValid(j)) continue;
                 const dd = Math.abs(cMid[j] - cx);
                 if (dd < bd) { bd = dd; best = j; }
             }
@@ -100,7 +102,7 @@ Item {
         // Same column: pick the nearest card above/below the current one.
         let best = -1, bd = 1000000;
         for (let j = 0; j < cCount; j++) {
-            if (cCol[j] !== cCol[i]) continue;
+            if (cCol[j] !== cCol[i] || !wValid(j)) continue;
             const gap = cMid[j] - cx;
             if (dy > 0 ? gap <= 1 : gap >= -1) continue;
             const dd = Math.abs(gap);
@@ -113,13 +115,13 @@ Item {
     property bool prompt: false          // "Open in browser?" dialog is up
     property int promptSel: 0            // 0 = Open, 1 = Cancel
     signal linkOpened()
-    readonly property int newsIdx: (inContent && explore) ? wCard : 0       // viii-store
-    readonly property var newsCur: (explore && News.items.length > 0) ? News.items[Math.min(newsIdx, News.items.length - 1)] : null
-    readonly property url newsSrc: newsCur ? News.src(newsCur.img) : ""
+    // viii-ps5hub: the story under the cursor (Welcome cards 6..11) is what Enter opens; the old Explore backdrop picture is gone
+    readonly property var newsCur: (welcome && inContent && wCard >= 6) ? welcomeGrid.story(wCard) : null
+    readonly property url newsSrc: ""
 
     // ---- viii-store: pane cursor, Enter action, enter/leave ----
     function pNav(dx, dy) {                        // move the pane cursor by geometry; false = nothing there
-        const g = wall ? wallGrid : exploreGrid;
+        const g = wallGrid;
         const n = g.nextIdx(wCard, dx, dy);
         if (n < 0) return false;
         wCard = n;
@@ -127,7 +129,7 @@ Item {
     }
     function cNav(dx, dy) { return paneOn ? pNav(dx, dy) : wNav(dx, dy); }
     function paneAct() {                           // Enter on a focused pane
-        if (explore) {
+        if (welcome) {
             if (newsCur) { promptSel = 0; prompt = true; }
             return;
         }
@@ -262,7 +264,7 @@ Item {
     function reset() { animateF = false; current = startIndex(); f = current; animateF = true; inCards = false; prompt = false; cardIdx = 0; inContent = false; wCard = 0; }
     function activate() {
         if (root.inContent) {            // viii-store: Explore reads a story, Wallstore applies a wallpaper; Welcome and app cards are display-only
-            if (paneOn) paneAct();
+            if (paneOn || welcome) paneAct();
             return;
         }
         if (paneOn) { down(); return; }  // no entry step: Enter on the tile does what Down does
@@ -422,22 +424,6 @@ Item {
         transform: Translate { x: (1 - root.infoIn) * 18 }
     }
 
-    // viii-store: Explore. Eight news panes on the Welcome engine; the picture of the focused story is drawn by Backdrop.
-    StoreGrid {
-        id: exploreGrid
-        mode: "explore"
-        shown: root.shown
-        x: root.padL
-        y: root.restY + (root.focusY - root.restY) * root.c
-        lift: root.c
-        focusIdx: (root.inContent && root.explore) ? root.wCard : -1
-        viewH: 768 - root.focusY
-        opacity: root.explore ? root.infoZ * root.infoIn : 0
-        visible: opacity > 0.01
-        transform: Translate { x: (1 - root.infoIn) * 18 }
-        onCardClicked: i => root.clickCard(i)
-    }
-
     // viii-store: Wallstore. The wallpaper in use, the recent ones and "Browse all", on the same engine.
     StoreGrid {
         id: wallGrid
@@ -458,10 +444,10 @@ Item {
     ExplorePage {
         anchors.fill: parent
         shown: root.shown
-        idx: root.newsIdx
+        story: root.newsCur
         prompt: root.prompt
         promptSel: root.promptSel
-        opacity: root.explore ? root.infoZ * root.infoIn : 0
+        opacity: root.prompt ? 1 : 0
         visible: opacity > 0.01
         transform: Translate { x: (1 - root.infoIn) * 18 }
         onPromptPicked: sel => root.pick(sel)
@@ -469,6 +455,7 @@ Item {
 
     // Welcome: the PS5 card grid (three columns, tall and small cards alternating)
     WelcomeGrid {
+        id: welcomeGrid
         shown: root.shown                     // welcome-data: only fetch/animate while the hub is on screen
         x: root.padL
         y: root.restY + (root.focusY - root.restY) * root.c

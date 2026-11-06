@@ -78,8 +78,9 @@ PanelWindow {
         return p.charAt(0) === "/" ? "file://" + p : p;
     }
 
+    // viii-ps5hub: Explore is merged into the Welcome page (widgets + news feeds), so it has no tile of its own
     function rebuild() {
-        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }, { isExplore: true, name: "Explore", id: "viii.explore" }, { isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
+        home.entries = [{ isWall: true, name: "Wallstore", id: "viii.wallstore" }, { isWelcome: true, name: "Welcome", id: "viii.welcome" }].concat(Apps.ranked(9)).concat([{ isLibrary: true, name: "Library", id: "viii.library" }]);
         home.reset();
         libAll = Apps.alphabetical();
         filterLib();

@@ -16,16 +16,20 @@ Item {
 
     readonly property bool live: shown && visible
     readonly property var items: News.items
-    readonly property var cur: items.length > 0 ? items[Math.max(0, Math.min(idx, items.length - 1))] : null
+    // viii-ps5hub: this file is only the "Open in browser?" dialog now; HomePage passes the focused Welcome story
+    property var story: null
+    readonly property var cur: story
 
     // ---- network (same source as the Welcome grid) ----
     readonly property var wifiDevice: {
+        if (!root.live) return null;
         const devices = Networking.devices.values;
         for (let i = 0; i < devices.length; i++)
             if (devices[i].type === DeviceType.Wifi) return devices[i];
         return null;
     }
     readonly property var wiredDevice: {
+        if (!root.live) return null;
         const devices = Networking.devices.values;
         for (let i = 0; i < devices.length; i++)
             if (devices[i].type === DeviceType.Wired && devices[i].connected) return devices[i];
