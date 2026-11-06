@@ -442,6 +442,7 @@ Item {
 
     // viii-store: the daily news fetch and the "Open in browser?" dialog (Explore)
     ExplorePage {
+	z: 100
         anchors.fill: parent
         shown: root.shown
         story: root.newsCur
