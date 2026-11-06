@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "../core"
+import "../hub"
 
 // viii first-run setup (Waystation). Its own Quickshell instance, started by `viii start` only while
 // ~/.local/state/viii/setup-done does not exist:  qs -p ~/.config/quickshell/viii/setup/shell.qml

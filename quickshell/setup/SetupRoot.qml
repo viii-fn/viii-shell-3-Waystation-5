@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import "../core"
+import "../hub"
 
 // viii first-run setup: the state, the helper processes and the finish logic. The screens only draw it.
 //
