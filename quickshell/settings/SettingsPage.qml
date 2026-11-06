@@ -186,6 +186,13 @@ FocusScope {
     property real promptPop: passwordPrompt ? 1 : 0
     Behavior on promptT { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
     Behavior on promptPop { NumberAnimation { duration: 280; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
+    // Any path that closes the prompt must also take focus away from its hidden TextInput.
+    onPasswordPromptChanged: {
+        if (!passwordPrompt) {
+            passwordField.focus = false;
+            if (active) Qt.callLater(function() { root.restoreFocus(); });
+        }
+    }
     property string wifiPassword: ""
     property var pendingNetwork: null
     property var pendingBluetooth: null
@@ -503,13 +510,26 @@ FocusScope {
             setStatus("Enter the Wi-Fi password first", "error");
             return;
         }
+        const psk = wifiPassword;
         networkBusy = true;
         connectionTimer.restart();
-        passwordPrompt = false;
-        forceActiveFocus();
+        closePrompt();
         setStatus("Connecting to " + pendingNetwork.name + "…", "loading");
-        pendingNetwork.connectWithPsk(wifiPassword);
+        pendingNetwork.connectWithPsk(psk);
+    }
+
+    // The prompt's TextInput keeps keyboard focus while it handles the Enter key, so hiding the
+    // prompt alone left focus on the invisible field: Enter/Escape then went nowhere and the whole
+    // Settings page (and the exclusive layer-shell keyboard grab) felt frozen. Release it and give
+    // focus back to the page on the next event-loop turn, after the key event has finished.
+    function closePrompt() {
+        passwordPrompt = false;
         wifiPassword = "";
+        passwordField.focus = false;
+        Qt.callLater(function() { root.restoreFocus(); });
+    }
+    function restoreFocus() {
+        if (root.active && !root.passwordPrompt) root.forceActiveFocus();
     }
 
     function moveGrid(dx, dy) {
@@ -684,9 +704,7 @@ FocusScope {
 
     function submitName() {
         const n = wifiPassword.trim();
-        passwordPrompt = false;
-        wifiPassword = "";
-        forceActiveFocus();
+        closePrompt();
         if (n.length < 1) { setStatus("Enter a name first", "error"); return; }
         Profile.save(n, Profile.pic, Profile.src);
         setStatus("Profile name saved", "success");
@@ -702,9 +720,7 @@ FocusScope {
 
     function submitWallpaperDir() {
         const d = wifiPassword.trim();
-        passwordPrompt = false;
-        wifiPassword = "";
-        forceActiveFocus();
+        closePrompt();
         Wall.setDir(d);
         setStatus(d === "" ? "Wallpaper folder reset to the default" : "Wallpaper folder set", "success");
     }
@@ -818,9 +834,7 @@ FocusScope {
     function handleKey(event) {
         if (passwordPrompt) {
             if (event.key === Qt.Key_Escape) {
-                passwordPrompt = false;
-                wifiPassword = "";
-                forceActiveFocus();
+                closePrompt();
                 event.accepted = true;
                 return;
             }
@@ -1010,7 +1024,7 @@ FocusScope {
         function onConnectionFailed(reason) {
             root.networkBusy = false;
             connectionTimer.stop();
-            root.passwordPrompt = false;
+            root.closePrompt();
             root.setStatus("Connection failed · check the password or try again", "error");
         }
         function onConnectedChanged() {
@@ -1372,9 +1386,7 @@ FocusScope {
                 onTextChanged: root.wifiPassword = text
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
-                        root.passwordPrompt = false;
-                        root.wifiPassword = "";
-                        root.forceActiveFocus();
+                        root.closePrompt();
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                         root.submitWifiPassword();
