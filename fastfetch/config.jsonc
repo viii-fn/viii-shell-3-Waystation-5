@@ -20,7 +20,7 @@
         { "type": "os", "key": "OS        " },
         { "type": "kernel", "key": "KERNEL    ", "format": "{release}" },
         { "type": "wm", "key": "WM        ", "format": "{pretty-name}" },
-        { "type": "command", "key": "SHELL     ", "text": "echo quickshell · glyph" },
+        { "type": "command", "key": "SHELL     ", "format": "{pretty-name}" },
         { "type": "terminal", "key": "TERM      ", "format": "{pretty-name}" },
         { "type": "terminalfont", "key": "FONT      " },
         { "type": "uptime", "key": "UPTIME    " },
