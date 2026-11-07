@@ -2064,7 +2064,7 @@ Item {
             width: 56
             height: 56
             x: root.width / 2 + (index - 4.5) * root.stepX - width / 2
-            y: root.stripY - height / 2 + (1 - root.vis) * 40
+            y: root.stripY
             opacity: root.vis
 
             // viii-cc-strip-ring: the active icon sits in a full white circle; the icon itself never zooms.
@@ -2161,7 +2161,7 @@ Item {
     Txt {
         width: 240
         x: root.width / 2 + (root.idx - 4.5) * root.stepX - width / 2
-        y: root.stripY + 46
+        y: root.stripY - 30
         horizontalAlignment: Text.AlignHCenter
         text: root.stripName()
         font.pixelSize: 15
