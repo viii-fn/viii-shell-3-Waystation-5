@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Laptop: screen frame with a cut-out display and a wide base. -->
+  <path fill="#ffffff" fill-rule="evenodd" d="
+    M 5.2 4.6
+    H 18.8
+    C 19.79 4.6 20.6 5.41 20.6 6.4
+    V 14.45
+    H 3.4
+    V 6.4
+    C 3.4 5.41 4.21 4.6 5.2 4.6
+    Z
+    M 5.1 6.35
+    V 12.8
+    H 18.9
+    V 6.35
+    Z"/>
+  <path fill="#ffffff" d="
+    M 2.3 15.35
+    H 21.7
+    C 22.37 15.35 22.9 15.91 22.87 16.58
+    L 22.80 17.57
+    C 22.72 18.70 21.79 19.58 20.66 19.58
+    H 3.34
+    C 2.21 19.58 1.28 18.70 1.20 17.57
+    L 1.13 16.58
+    C 1.10 15.91 1.63 15.35 2.3 15.35
+    Z"/>
+</svg>

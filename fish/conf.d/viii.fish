@@ -14,10 +14,6 @@ alias clean-cache='~/.local/bin/clean-caches'
 alias vt2='~/.local/bin/viii-theme'
 alias deepclean='~/.local/bin/deepclean'
 
-# dotfiles bare repo: use `dot` instead of `git` for dotfiles
-alias dot='git --git-dir=$HOME/.dotfiles --work-tree=$HOME'
-alias dotlg='lazygit --git-dir=$HOME/.dotfiles --work-tree=$HOME'
-
 # yazi wrapper: after you quit yazi, the shell cd's into the folder you ended in
 function y
     set tmp (mktemp -t "yazi-cwd.XXXXXX")

@@ -91,16 +91,27 @@ Item {
     function isCharging(d) {
         return d.state === UPowerDeviceState.Charging || d.state === UPowerDeviceState.FullyCharged || d.state === UPowerDeviceState.PendingCharge;
     }
+    // PS5-style gauges identify a device by its picture, so pick the icon from the
+    // UPower model name. Laptop and DualSense are the two real devices here; anything
+    // else gets the generic gadget glyph until it needs its own drawing.
+    function batteryKind(name) {
+        const n = String(name || "").toLowerCase();
+        if (n.indexOf("laptop") >= 0 || n.indexOf("notebook") >= 0) return "laptop";
+        if (n.indexOf("dualsense") >= 0 || n.indexOf("controller") >= 0
+                || n.indexOf("gamepad") >= 0) return "dualsense";
+        return "device";
+    }
     readonly property var batts: {
         if (!root.active) return [];
         const out = [];
         const main = UPower.displayDevice;
-        if (main && main.isPresent) out.push({ name: "Laptop", pct: main.percentage, charging: isCharging(main) });
+        if (main && main.isPresent) out.push({ name: "Laptop", kind: "laptop", pct: main.percentage, charging: isCharging(main) });
         const list = UPower.devices ? UPower.devices.values : [];
         for (let i = 0; i < list.length; i++) {
             const d = list[i];
             if (!d || d === main || d.powerSupply || d.isLaptopBattery || !(d.percentage > 0)) continue;
-            out.push({ name: d.model || "Device", pct: d.percentage, charging: isCharging(d) });
+            const name = d.model || "Device";
+            out.push({ name: name, kind: batteryKind(name), pct: d.percentage, charging: isCharging(d) });
         }
         return out.slice(0, 3);
     }
@@ -350,31 +361,81 @@ Item {
         Item { id: body; anchors.fill: parent }
     }
 
-    // a progress ring with a number inside (PS5 controller battery)
-    component Ring: Item {
-        id: ring
+    // PS5 battery gauge: a thin progress ring with the device glyph in the middle
+    // and a small segmented battery below it. Charging rings are mint green, a low
+    // charge is amber, everything else stays white.
+    component BatGauge: Item {
+        id: gauge
         property real value: 0
-        property color tone: Theme.fg
-        property string label: ""
-        width: 40; height: 40
+        property bool charging: false
+        property string kind: "device"
+        width: 54; height: 54
+        readonly property color tone: gauge.charging ? "#4ee38a"
+            : (gauge.value < 0.2 ? "#f0a63a" : Theme.fg)
+        readonly property int bars: Math.max(0, Math.min(3, Math.ceil(gauge.value * 3)))
+
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                strokeWidth: 4
-                strokeColor: Qt.rgba(1, 1, 1, 0.14)
+                strokeWidth: 3.5
+                strokeColor: Qt.rgba(1, 1, 1, 0.13)
                 fillColor: "transparent"
-                PathAngleArc { centerX: 20; centerY: 20; radiusX: 17; radiusY: 17; startAngle: 0; sweepAngle: 360 }
+                PathAngleArc { centerX: 27; centerY: 27; radiusX: 24.5; radiusY: 24.5; startAngle: 0; sweepAngle: 360 }
             }
             ShapePath {
-                strokeWidth: 4
-                strokeColor: ring.tone
+                strokeWidth: 3.5
+                strokeColor: gauge.tone
                 fillColor: "transparent"
-                capStyle: ShapePath.RoundCap
-                PathAngleArc { centerX: 20; centerY: 20; radiusX: 17; radiusY: 17; startAngle: -90; sweepAngle: Math.max(6, 360 * Math.min(1, ring.value)) }
+                PathAngleArc {
+                    centerX: 27; centerY: 27; radiusX: 24.5; radiusY: 24.5
+                    startAngle: -90
+                    sweepAngle: Math.max(2, 360 * Math.min(1, Math.max(0, gauge.value)))
+                }
             }
         }
-        Txt { anchors.centerIn: parent; text: ring.label; font.pixelSize: 11; font.weight: Font.DemiBold }
+
+        Image {
+            x: 15; y: 10
+            width: 24; height: 24
+            source: "icons/" + gauge.kind + ".svg"
+            sourceSize.width: 64
+            sourceSize.height: 64
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            asynchronous: true
+        }
+
+        // the little battery pictogram from the PS5 gauge
+        Item {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 37
+            width: 15; height: 8
+            Rectangle {
+                x: 0; y: 0
+                width: 13; height: 8
+                radius: 2
+                color: "transparent"
+                border.width: 1
+                border.color: Theme.fg
+            }
+            Rectangle {
+                x: 13.5; y: 2.1
+                width: 1.5; height: 3.8
+                radius: 0.75
+                color: Theme.fg
+            }
+            Repeater {
+                model: 3
+                delegate: Rectangle {
+                    required property int index
+                    x: 2.0 + index * 3.1; y: 2.0
+                    width: 2.2; height: 4.0
+                    radius: 0.6
+                    color: index < gauge.bars ? Theme.fg : "transparent"
+                }
+            }
+        }
     }
 
     // weather glyph
@@ -672,23 +733,19 @@ Item {
 
                 Txt { visible: root.batts.length === 0; x: 18; y: 56; text: "No battery detected"; font.pixelSize: 14; color: Theme.fgDim }
                 Item {
-                    x: 18; y: 50
-                    width: parent.width - 36; height: 44
-                    Repeater {
-                        model: root.batts
-                        delegate: Item {
-                            id: bat
-                            required property var modelData
-                            required property int index
-                            x: index * 112
-                            width: 108; height: 44
-                            Ring {
-                                value: bat.modelData.pct
-                                label: String(Math.round(bat.modelData.pct * 100))
-                                tone: bat.modelData.charging ? "#6bdc8b" : (bat.modelData.pct < 0.15 ? "#ff6b6b" : Theme.fg)
+                    x: 0; y: 44
+                    width: parent.width; height: 54
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 22
+                        Repeater {
+                            model: root.batts
+                            delegate: BatGauge {
+                                required property var modelData
+                                value: modelData.pct
+                                charging: modelData.charging
+                                kind: modelData.kind
                             }
-                            Txt { x: 50; y: 4; width: 56; text: bat.modelData.name; font.pixelSize: 13; font.weight: Font.DemiBold }
-                            Txt { x: 50; y: 23; width: 56; text: bat.modelData.charging ? "Charging" : "Battery"; font.pixelSize: 11; color: bat.modelData.charging ? "#6bdc8b" : Theme.fgDim }
                         }
                     }
                 }

@@ -1,25 +1,25 @@
 # Set custom format with Directory -> Git modules -> Lambda prompt character
-format = """
-$directory\
-$git_branch\
-$git_commit\
-$git_state\
-$git_metrics\
-$git_status\
-$line_break\
-$character"""
+format = "$line_break$directory$git_branch$git_commit$git_state$git_metrics$git_status$cmd_duration$character"
 
 # Don't add a line break at the start of the prompt
-add_newline = true
+add_newline = false
+
+[cmd_duration]
+min_time = 2000
+style = "bright-black"
+format = "[$duration]($style) "
 
 [directory]
-style = "bold cyan"
-truncation_length = 3
-truncate_to_repo = false
+style = "white"
+truncation_length = 2
+truncation_symbol = "…/"
+read_only = " ●"
+read_only_style = "red"
+format = "[$path]($style)[$read_only]($read_only_style) "
 
 [character]
-success_symbol = "[λ](bold blue) "
-error_symbol = "[∴](bold red) "
+success_symbol = "[∴](bold) "
+error_symbol = "[λ](bold red) "
 vimcmd_symbol = "[»](bold orange) "
 
 # --- Git Modules ---

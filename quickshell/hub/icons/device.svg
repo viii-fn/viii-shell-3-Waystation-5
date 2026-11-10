@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Generic wireless device, used when UPower reports a battery we have no
+       dedicated glyph for. -->
+  <path fill="#ffffff" fill-rule="evenodd" d="
+    M 7 4.5
+    H 17
+    C 18.93 4.5 20.5 6.07 20.5 8
+    V 16
+    C 20.5 17.93 18.93 19.5 17 19.5
+    H 7
+    C 5.07 19.5 3.5 17.93 3.5 16
+    V 8
+    C 3.5 6.07 5.07 4.5 7 4.5
+    Z
+    M 7 6.5
+    C 6.17 6.5 5.5 7.17 5.5 8
+    V 16
+    C 5.5 16.83 6.17 17.5 7 17.5
+    H 17
+    C 17.83 17.5 18.5 16.83 18.5 16
+    V 8
+    C 18.5 7.17 17.83 6.5 17 6.5
+    Z"/>
+  <circle cx="12" cy="12" r="2.2" fill="#ffffff"/>
+</svg>
