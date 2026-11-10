@@ -3,6 +3,8 @@
 A PlayStation 5 style home screen for Hyprland, built on Quickshell + matugen.
 
 ```
+git clone https://github.com/viii-fn/viii-shell-3-Waystation-5.git ~/viii-shell-3
+cd ~/viii-shell-3
 ./install.sh      # symlinks into ~/.config and ~/.local/bin
 viii start        # stops glyph, starts viii
 viii log          # shell log
